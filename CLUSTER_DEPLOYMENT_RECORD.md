@@ -528,9 +528,10 @@ PNG 签名和 HTTP 200 都不能排除面板显示 `No data`。完整实验验�
 | `manifests/audit-dashboard.yaml` | `558dfb641b07815b1dba8467a7939516be88ce3b07016f448d08e775c81d82fb` |
 | `manifests/perf-dashboard.json` | `df66405f2b9be9166cb1ed09cf9bf9ffc1e191deb6a2811fcf272cc5aaac188b` |
 | `manifests/scheduler-smoke-tests.yaml` | `8574169b65bd048ed085c344bdbf6650cae18773c44001a7bef1bfc0acd8aa45` |
+| `manifests/kwok-configuration.yaml` | `b3dc786a606315c8d830433905aa7197423fdec6ba14257f6af8ee2677997cbb` |
 | `scripts/create-canary-cluster.sh` | `796c7aee3595252d492d937a6ebb76c7f6fd609806a419aae746c7b42c14ce03` |
 | `scripts/configure-control-plane-baseline.sh` | `8e533ca29ef7b45751fa5c178f04cf088ae55f74d878b17907e6d1c2831d7a47` |
-| `scripts/install-kwok-canary.sh` | `24ec70a2d257b5615ee67c5fd6e0e743542aed552d209683eed33f8ff19cbcb5` |
+| `scripts/install-kwok-canary.sh` | `66d2f279820b110711f2975b8af9502d06a38c761e98f82d92ce8d90516ebcb6` |
 | `scripts/prepare-scheduler-artifacts.sh` | `ef0fc3f6d828d9e98c0cc8dcbe4ff1dfbb6a603ba62ec93a3c2feee7c1f574c1` |
 | `scripts/install-schedulers.sh` | `d974402272616e26f95f3396525a9e35197df59e4f60fe224f47cd812bc08438` |
 | `scripts/scope-kueue-webhooks.sh` | `f3be442a47f5992e78b37b0b4c2f4dac672cc79fc683f44cb206c9e44a96acdc` |
@@ -657,3 +658,11 @@ Grafana Ingress 的版本化部署源位于仓库，当前文件指纹如下：
 - 测试后场景 1–2 的 Grafana 相对 Dashboard 已恢复为上一轮有效历史视图；8 个相对 Dashboard 当前均为 `100ms`，没有保留 1970 时间窗。
 - 最终 `make down`、三套实验资源零残留断言和 `verify-base.sh 1000` 全部通过；`1001/1001` Node Ready，8 个调度 Deployment 与 Audit Exporter 均为 `1/1 Ready`，服务器仓库已同步到 `69142a9`。
 - 完整场景边界、24 个 Case 的 CST 时间、制品明细和根因分析见 `RESIDENT_CLUSTER_FULL_TEST_REPORT.md` 第 21 节。
+
+## 25. 2026-08-24 Volcano trace 排查收尾与 KWOK 并发基线
+
+- 集群的 Volcano Scheduler 和 Controller Manager 已恢复为官方 `v1.15.1` 镜像；Scheduler 的诊断环境变量 `GODEBUG`、`GOMAXPROCS` 已删除，既有 `DEBUG_SOCKET_DIR`、200ms 调度周期、QPS/Burst `1000/1000`、`-v=3` 和 8 CPU limit 保持不变。
+- 官方 Scheduler 运行镜像摘要为 `sha256:e79dc85279b5fd2c5e431571b4683f819ff0dfeacdf230fca49e6ce1f4509ae1`，官方 Controller Manager 运行镜像摘要为 `sha256:555245dd5c73524dee627ad0c2e308c9dd95af234df791d11e6bcdfa2f33a4ef`。
+- KWOK 并发正式固定为 `nodeLeaseParallelism=4`、`podPlayStageParallelism=1`、`nodePlayStageParallelism=4`。仓库原生配置、版本化常驻 ConfigMap、远端权威部署包和实时集群已对齐。
+- 远端 `install-kwok-canary.sh` 会在应用上游 KWOK 清单后应用本地 `manifests/kwok-configuration.yaml`，再重启并等待 KWOK Controller，避免重建集群时被上游默认值覆盖。
+- trace1～trace6 镜像、实验批次及原始日志位置见工作区根目录 `volcano-v1.15.1-scenario3-throughput-variance-report.md` 的归档附录；诊断原始日志保留在服务器 `/root/benchmark-run-artifacts/`，不纳入 Git。
