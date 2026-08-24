@@ -5,7 +5,7 @@
 本文记录远端调度基准集群的实际部署状态、安装来源、版本、关键配置、镜像摘要、重建顺序和已知风险，供故障恢复、版本更新和实验环境审计使用。
 
 - 初始记录时间：`2026-08-03T12:35:49Z`（北京时间 `2026-08-03 20:35:49`）
-- 最近变更时间：`2026-08-11`，完成 `100ms` 采集与单相对面板归档的 8 场景、24 Case 完整验证
+- 最近变更时间：`2026-08-24`，完成 Volcano 场景 3 波动排查并将 KWOK Pod stage 并发基线固定为 `1`
 - 服务器：`104.105.137.213`
 - 当前唯一 Kind 集群：`volcano-benchmark-1348`
 - Kubernetes：`v1.34.8`
@@ -143,14 +143,19 @@ etcd 数据位于 Kind 控制面容器对应的 Docker volume。执行 `kind del
 | 虚拟节点数 | `1000` |
 | 节点名 | `kwok-node-0` 至 `kwok-node-999` |
 | 单节点容量 | `16 CPU / 64 GiB / 110 Pods` |
+| Node Lease 并发 | `nodeLeaseParallelism=4` |
+| Pod stage 并发 | `podPlayStageParallelism=1` |
+| Node stage 并发 | `nodePlayStageParallelism=4` |
 | 标签 | `type=kwok`、`node-role.kubernetes.io/agent=""` |
 | 注解 | `kwok.x-k8s.io/node=fake` |
 | Taint | `kwok.x-k8s.io/node=fake:NoSchedule` |
 
-安装方式：KWOK 的 `kwok.yaml` 和 `stage-fast.yaml` 是直接从下面的远程 URL 执行 `kubectl apply -f URL`，没有先保存到 `downloads`：
+安装方式：先从下面的远程 URL 应用 KWOK 的 `kwok.yaml` 和 `stage-fast.yaml`，再应用远端权威部署包中的 `manifests/kwok-configuration.yaml` 覆盖 ConfigMap 并重启 KWOK Controller：
 
 - `https://github.com/kubernetes-sigs/kwok/releases/download/v0.7.0/kwok.yaml`
 - `https://github.com/kubernetes-sigs/kwok/releases/download/v0.7.0/stage-fast.yaml`
+
+本地覆盖将并发固定为 `nodeLease/podPlayStage/nodePlayStage=4/1/4`；仓库 `base/kwok/kwok.yaml` 保存相同内容。不能只重新应用上游 `kwok.yaml`，否则会丢失该性能基线。
 
 先建立 100 个金丝雀 KWOK Node，再由 `scale-kwok-nodes.sh 1000` 生成缺少的 Node YAML 并通过标准输入执行 `kubectl create -f -`。
 
@@ -174,7 +179,7 @@ etcd 数据位于 Kind 控制面容器对应的 Docker volume。执行 `kind del
 | Traefik | chart `40.2.0` / app `v3.7.1` | `benchmark-grafana-ingress` | chart 先下载并校验，再从本地 tgz 安装；镜像固定 digest |
 | kube-state-metrics | `v2.19.1` | `monitoring` | kube-prometheus-stack 子组件 |
 | Audit Exporter | `v0.0.29` | `kube-system` | 本地维护 YAML apply，直接拉取自维护公开镜像 |
-| KWOK | `v0.7.0` | `kube-system` | 远程 URL 直接 apply |
+| KWOK | `v0.7.0` | `kube-system` | 远程清单 + 本地并发配置覆盖 |
 
 集群自带组件还包括 CoreDNS `v1.12.1`、kube-proxy `v1.34.8`、kindnet `v20260528-9350166c` 和 local-path-provisioner `v20260521-9fb22683`。
 
@@ -465,6 +470,7 @@ cd /root/github/kube-scheduling-perf
 - Kubernetes client/server 都是 `v1.34.8`
 - `1001/1001` Node Ready
 - KWOK Controller 镜像是 `v0.7.0`
+- KWOK ConfigMap 中 `nodeLease/podPlayStage/nodePlayStage` 并发为 `4/1/4`
 - API Server 审计日志持续写入
 - 三套调度组件 Deployment rollout 成功
 - Volcano、Kueue、PodGroup 和 ElasticQuota 关键 CRD Established

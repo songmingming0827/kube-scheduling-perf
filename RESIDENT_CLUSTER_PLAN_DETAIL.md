@@ -28,6 +28,16 @@ YuniKorn
 - `1` 个控制面 Node
 - 合计 `1001/1001` Node Ready
 
+KWOK Controller 的并发基线固定为：
+
+```yaml
+nodeLeaseParallelism: 4
+podPlayStageParallelism: 1
+nodePlayStageParallelism: 4
+```
+
+其中 Pod 生命周期 stage 使用单 worker，避免大量 Running/Succeeded 状态更新集中进入同一 Volcano 调度 session；Node 和 Lease 并发保持现有集群值 `4`。仓库 `base/kwok/kwok.yaml`、运行集群 ConfigMap 和远端权威部署包必须保持一致。
+
 同步更新远端部署包：
 
 ```text
