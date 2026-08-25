@@ -6,8 +6,6 @@ CLEANUP_TIMEOUT_SECONDS ?= 600
 
 RESULT_METRICS_TIMEOUT_SECONDS ?= 120
 
-NODES_SIZE ?= 1000
-
 QUEUES_SIZE ?= 1
 JOBS_SIZE_PER_QUEUE ?= 1
 PODS_SIZE_PER_JOB ?= 1
@@ -23,9 +21,6 @@ CRITICAL_PODS_SIZE_PER_JOB ?= 1
 CPU_REQUEST_PER_POD ?= 1
 MEMORY_REQUEST_PER_POD ?= 1Gi
 
-CPU_PER_NODE ?= 16
-MEMORY_PER_NODE ?= 64Gi
-
 CPU_PER_QUEUE ?= 10000
 MEMORY_PER_QUEUE ?= 10000Gi
 CPU_LENDING_LIMIT ?=
@@ -38,8 +33,6 @@ COMPARISON_SCHEDULERS := kueue volcano yunikorn
 SCHEDULERS ?= $(COMPARISON_SCHEDULERS)
 RELATIVE_DASHBOARD_SCENARIO ?=
 PROMETHEUS_URL ?= http://127.0.0.1:31003
-
-LIMIT_CPU ?= 8
 
 KIND_CLUSTER_NAME ?= volcano-benchmark-1348
 KUBECONFIG ?= /root/benchmark-1348-deploy/kubeconfig
@@ -63,9 +56,6 @@ GO_IN_DOCKER = docker run --rm --network host \
 
 TEST_ENVS = \
 		SCHEDULERS="$(SCHEDULERS)" \
-		NODES_SIZE=$(NODES_SIZE) \
-		CPU_PER_NODE=$(CPU_PER_NODE) \
-		MEMORY_PER_NODE=$(MEMORY_PER_NODE) \
 		QUEUES_SIZE=$(QUEUES_SIZE) \
 		JOBS_SIZE_PER_QUEUE=$(JOBS_SIZE_PER_QUEUE) \
 		PODS_SIZE_PER_JOB=$(PODS_SIZE_PER_JOB) \
@@ -100,7 +90,6 @@ scenario-1:
 	$(MAKE) serial-test \
 		RELATIVE_DASHBOARD_SCENARIO=1 \
 		TEST_TIMEOUT_SECONDS=350 \
-		NODES_SIZE=1000 \
 		QUEUES_SIZE=1  JOBS_SIZE_PER_QUEUE=10000  PODS_SIZE_PER_JOB=1
 
 .PHONY: scenario-2
@@ -108,7 +97,6 @@ scenario-2:
 	$(MAKE) serial-test \
 		RELATIVE_DASHBOARD_SCENARIO=2 \
 		TEST_TIMEOUT_SECONDS=200 \
-		NODES_SIZE=1000 \
 		QUEUES_SIZE=1  JOBS_SIZE_PER_QUEUE=500    PODS_SIZE_PER_JOB=20
 
 .PHONY: scenario-3
@@ -116,7 +104,6 @@ scenario-3:
 	$(MAKE) serial-test \
 		RELATIVE_DASHBOARD_SCENARIO=3 \
 		TEST_TIMEOUT_SECONDS=160 \
-		NODES_SIZE=1000 \
 		QUEUES_SIZE=1  JOBS_SIZE_PER_QUEUE=20     PODS_SIZE_PER_JOB=500
 
 .PHONY: scenario-4
@@ -124,7 +111,6 @@ scenario-4:
 	$(MAKE) serial-test \
 		RELATIVE_DASHBOARD_SCENARIO=4 \
 		TEST_TIMEOUT_SECONDS=190 \
-		NODES_SIZE=1000 \
 		QUEUES_SIZE=1  JOBS_SIZE_PER_QUEUE=1      PODS_SIZE_PER_JOB=10000
 
 .PHONY: scenario-5
@@ -132,7 +118,7 @@ scenario-5:
 	$(MAKE) serial-test \
 		RELATIVE_DASHBOARD_SCENARIO=5 \
 		TEST_TIMEOUT_SECONDS=430 \
-		NODES_SIZE=1000 GANG=true \
+		GANG=true \
 		QUEUES_SIZE=1  JOBS_SIZE_PER_QUEUE=10000  PODS_SIZE_PER_JOB=1
 
 .PHONY: scenario-6
@@ -140,7 +126,7 @@ scenario-6:
 	$(MAKE) serial-test \
 		RELATIVE_DASHBOARD_SCENARIO=6 \
 		TEST_TIMEOUT_SECONDS=310 \
-		NODES_SIZE=1000 GANG=true \
+		GANG=true \
 		QUEUES_SIZE=1  JOBS_SIZE_PER_QUEUE=500    PODS_SIZE_PER_JOB=20
 
 .PHONY: scenario-7
@@ -148,7 +134,7 @@ scenario-7:
 	$(MAKE) serial-test \
 		RELATIVE_DASHBOARD_SCENARIO=7 \
 		TEST_TIMEOUT_SECONDS=310 \
-		NODES_SIZE=1000 GANG=true \
+		GANG=true \
 		QUEUES_SIZE=1  JOBS_SIZE_PER_QUEUE=20     PODS_SIZE_PER_JOB=500
 
 .PHONY: scenario-8
@@ -156,7 +142,7 @@ scenario-8:
 	$(MAKE) serial-test \
 		RELATIVE_DASHBOARD_SCENARIO=8 \
 		TEST_TIMEOUT_SECONDS=400 \
-		NODES_SIZE=1000 GANG=true \
+		GANG=true \
 		QUEUES_SIZE=1  JOBS_SIZE_PER_QUEUE=1      PODS_SIZE_PER_JOB=10000
 
 .PHONY: ensure-directories
@@ -212,7 +198,7 @@ test-init-$(1): bin/test-$(1)
 	KUBECONFIG=$(KUBECONFIG) ./bin/test-$(1) -test.timeout $(TEST_TIMEOUT_SECONDS)s -test.run '^TestInit' -test.v
 
 .PHONY: test-batch-job-$(1)
-test-batch-job-$(1): test-batch-job-$(1)
+test-batch-job-$(1):
 	KUBECONFIG=$(KUBECONFIG) ./bin/test-$(1) -test.timeout $(TEST_TIMEOUT_SECONDS)s -test.run '^TestBatchJob' -test.v
 
 .PHONY: reset-auditlog-$(1)
@@ -468,9 +454,6 @@ wait-all-schedulers:
 	$(MAKE) wait-deployment-replicas WAIT_DEPLOYMENTS='kueue-system/kueue-controller-manager=1 coscheduling/coscheduling=1 coscheduling/scheduler-plugins-controller=1 volcano-system/volcano-scheduler=1 volcano-system/volcano-controllers=1 volcano-system/volcano-admission=1 yunikorn/yunikorn-scheduler=1 yunikorn/yunikorn-admission-controller=1 $(AUDIT_EXPORTER_NAMESPACE)/$(AUDIT_EXPORTER_DEPLOYMENT)=1'
 	cd $(RESIDENT_DEPLOY_DIR) && ./scripts/verify-base.sh 1000
 
-bin/kind:
-	$(GO_IN_DOCKER) go build -o ./bin/kind sigs.k8s.io/kind
-
 .PHONY: up
 up: ensure-directories
 	echo $(TEST_ENVS)
@@ -581,31 +564,6 @@ save-scheduler-result:
 test-save-scheduler-result:
 	./hack/test-save-scheduler-result.sh
 
-.PHONY: up-overview
-up-overview:
-	make -C ./clusters/overview up
-
-.PHONY: down-overview
-down-overview:
-	make -C ./clusters/overview down
-
-.PHONY: wait-overview
-wait-overview:
-	make -C ./clusters/overview wait
-
-.PHONY: prepare-overview
-prepare-overview:
-	make up-overview
-	make wait-overview
-
-.PHONY: start-overview
-start-overview:
-	make -C ./clusters/overview start-export
-
-.PHONY: end-overview
-end-overview:
-	make down-overview
-
 .PHONY: save-result
 save-result: validate-result-scenario
 	test "$(strip $(SCHEDULERS))" = "$(COMPARISON_SCHEDULERS)"
@@ -635,13 +593,3 @@ save-result: validate-result-scenario
 		rm -rf -- "$$target"; \
 		mv ./tmp/result-staging "$$target"
 	rm -f ./tmp/result-from-millis ./tmp/result-to-millis
-
-.PHONY: delete-registry
-delete-registry:
-	-docker rm -f kind-registry
-
-.PHONY: cleanup
-cleanup:
-	-make down \
-		delete-registry
-	-rm -rf ./logs/

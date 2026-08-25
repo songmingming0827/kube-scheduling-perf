@@ -57,7 +57,7 @@
 | 控制面容器 OS | Debian GNU/Linux 13 (trixie) |
 | 控制面内核 | `6.8.0-134-generic` |
 
-重要差异：仓库内 `/root/github/kube-scheduling-perf/bin/kind` 当前仍是 `v0.27.0`，不是本集群的创建工具。创建、重建或删除本基线集群时应明确使用 `/usr/local/bin/kind v0.32.0`。
+仓库不再构建或保存独立 Kind 二进制。创建、重建或删除本基线集群时应明确使用 `/usr/local/bin/kind v0.32.0`。
 
 `install-tooling.sh` 只安装和校验 `kubectl v1.34.8`，不会安装 Kind、Helm、jq、curl、tar 或 sha256sum；重建前必须先确认这些宿主机工具存在。
 

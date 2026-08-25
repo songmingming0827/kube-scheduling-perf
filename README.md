@@ -69,7 +69,6 @@ The command verifies the resident Kubernetes cluster, all scheduler components, 
 
 ```bash
 make serial-test \
-  NODES_SIZE=1000 \
   QUEUES_SIZE=1 \
   JOBS_SIZE_PER_QUEUE=500 \
   PODS_SIZE_PER_JOB=20 \
@@ -136,7 +135,6 @@ Use this when a scheduler run is interrupted. The target enables all scheduler c
 
 | Variable | Default | Description |
 | --- | ---: | --- |
-| `NODES_SIZE` | `1000` | KWOK worker-node count recorded in the experiment |
 | `QUEUES_SIZE` | `1` | Number of benchmark queues |
 | `JOBS_SIZE_PER_QUEUE` | `1` | Jobs created in each queue |
 | `PODS_SIZE_PER_JOB` | `1` | Pods created by each job |
@@ -175,7 +173,6 @@ The resident API Server audit file is still reset between scheduler runs and con
 
 ```text
 base/                       # Resident cluster support manifests
-clusters/                   # Legacy per-component cluster definitions
 deploy/grafana-ingress/     # Persistent Grafana ingress
 hack/                       # Result collection and helper scripts
 schedulers/                 # Scheduler-specific configuration

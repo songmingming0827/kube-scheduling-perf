@@ -138,13 +138,9 @@ results/scenario-2/volcano/
 KIND_CLUSTER_NAME = volcano-benchmark-1348
 KUBECONFIG = /root/benchmark-1348-deploy/kubeconfig
 KUBECTL = /root/benchmark-1348-deploy/bin/kubectl
-
-NODES_SIZE = 1000
-CPU_PER_NODE = 16
-MEMORY_PER_NODE = 64Gi
 ```
 
-`NODES_SIZE` 只用于记录实验环境规模，不再用于创建 Node。
+节点数量和单节点容量属于常驻集群基线，由部署包的验证脚本检查，不再作为测试 Makefile 参数暴露。
 
 ### 4.2 `make up`
 

@@ -1,5 +1,3 @@
-registry-data/
-logs/
 bin/
 gopath/
 go-build/

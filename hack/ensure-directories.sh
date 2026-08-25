@@ -40,9 +40,6 @@ ensure_directory "${ROOT_DIR}/gopath"
 # Create go-build directory
 ensure_directory "${ROOT_DIR}/go-build"
 
-# Create registry-data directory
-ensure_directory "${ROOT_DIR}/registry-data"
-
 # Create results directory
 ensure_directory "${ROOT_DIR}/results"
 
