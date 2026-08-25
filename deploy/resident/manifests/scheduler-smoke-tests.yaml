@@ -1,0 +1,143 @@
+apiVersion: batch.volcano.sh/v1alpha1
+kind: Job
+metadata:
+  name: smoke-volcano
+  namespace: bench-volcano
+  labels:
+    benchmark.scheduling/smoke: volcano
+spec:
+  minAvailable: 1
+  schedulerName: volcano
+  queue: default
+  tasks:
+  - name: worker
+    replicas: 1
+    template:
+      metadata:
+        labels:
+          benchmark.scheduling/smoke: volcano
+      spec:
+        restartPolicy: Never
+        schedulerName: volcano
+        nodeSelector:
+          type: kwok
+        tolerations:
+        - key: kwok.x-k8s.io/node
+          operator: Exists
+          effect: NoSchedule
+        containers:
+        - name: worker
+          image: registry.k8s.io/pause:3.10.1
+          resources:
+            requests:
+              cpu: 100m
+              memory: 32Mi
+---
+apiVersion: kueue.x-k8s.io/v1beta2
+kind: ResourceFlavor
+metadata:
+  name: smoke-default
+---
+apiVersion: kueue.x-k8s.io/v1beta2
+kind: ClusterQueue
+metadata:
+  name: smoke-cluster-queue
+spec:
+  namespaceSelector:
+    matchLabels:
+      benchmark.scheduling/base: kueue
+  resourceGroups:
+  - coveredResources:
+    - cpu
+    - memory
+    flavors:
+    - name: smoke-default
+      resources:
+      - name: cpu
+        nominalQuota: "10"
+      - name: memory
+        nominalQuota: 10Gi
+---
+apiVersion: kueue.x-k8s.io/v1beta2
+kind: LocalQueue
+metadata:
+  name: smoke-local-queue
+  namespace: bench-kueue
+spec:
+  clusterQueue: smoke-cluster-queue
+---
+apiVersion: scheduling.x-k8s.io/v1alpha1
+kind: PodGroup
+metadata:
+  name: smoke-kueue
+  namespace: bench-kueue
+spec:
+  minMember: 2
+  scheduleTimeoutSeconds: 60
+---
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: smoke-kueue
+  namespace: bench-kueue
+  labels:
+    benchmark.scheduling/smoke: kueue
+    kueue.x-k8s.io/queue-name: smoke-local-queue
+spec:
+  suspend: true
+  parallelism: 2
+  completions: 2
+  template:
+    metadata:
+      labels:
+        benchmark.scheduling/smoke: kueue
+        scheduling.x-k8s.io/pod-group: smoke-kueue
+    spec:
+      restartPolicy: Never
+      schedulerName: coscheduling
+      nodeSelector:
+        type: kwok
+      tolerations:
+      - key: kwok.x-k8s.io/node
+        operator: Exists
+        effect: NoSchedule
+      containers:
+      - name: worker
+        image: registry.k8s.io/pause:3.10.1
+        resources:
+          requests:
+            cpu: 100m
+            memory: 32Mi
+---
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: smoke-yunikorn
+  namespace: bench-yunikorn
+  labels:
+    benchmark.scheduling/smoke: yunikorn
+spec:
+  parallelism: 1
+  completions: 1
+  template:
+    metadata:
+      labels:
+        benchmark.scheduling/smoke: yunikorn
+        applicationId: smoke-yunikorn
+        queue: root.default
+    spec:
+      restartPolicy: Never
+      schedulerName: yunikorn
+      nodeSelector:
+        type: kwok
+      tolerations:
+      - key: kwok.x-k8s.io/node
+        operator: Exists
+        effect: NoSchedule
+      containers:
+      - name: worker
+        image: registry.k8s.io/pause:3.10.1
+        resources:
+          requests:
+            cpu: 100m
+            memory: 32Mi

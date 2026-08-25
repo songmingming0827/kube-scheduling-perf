@@ -4,5 +4,9 @@ gopath/
 go-build/
 vendor/
 tmp/
+deploy/resident/bin/
+deploy/resident/downloads/
+deploy/resident/logs/
+deploy/resident/kubeconfig
 
 .DS_Store

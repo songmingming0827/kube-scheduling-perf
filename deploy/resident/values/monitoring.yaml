@@ -1,0 +1,88 @@
+defaultRules:
+  create: false
+
+alertmanager:
+  enabled: false
+
+nodeExporter:
+  enabled: false
+
+kubelet:
+  enabled: false
+
+coreDns:
+  enabled: false
+
+kubeProxy:
+  enabled: false
+
+grafana:
+  enabled: true
+  defaultDashboardsEnabled: true
+  grafana.ini:
+    server:
+      root_url: /grafana/
+      serve_from_sub_path: true
+    auth:
+      disable_login_form: true
+      disable_signout_menu: true
+    auth.anonymous:
+      enabled: true
+      org_role: Viewer
+      hide_version: true
+  imageRenderer:
+    enabled: true
+    grafanaSubPath: grafana
+    image:
+      pullPolicy: IfNotPresent
+    resources:
+      requests:
+        cpu: 500m
+        memory: 1Gi
+      limits:
+        cpu: "4"
+        memory: 16Gi
+  service:
+    type: NodePort
+    nodePort: 30004
+  sidecar:
+    dashboards:
+      enabled: true
+      label: grafana_dashboard
+      labelValue: "1"
+  resources:
+    requests:
+      cpu: 100m
+      memory: 256Mi
+    limits:
+      cpu: "1"
+      memory: 1Gi
+
+kube-state-metrics:
+  resources:
+    requests:
+      cpu: 200m
+      memory: 256Mi
+    limits:
+      cpu: "2"
+      memory: 2Gi
+
+prometheusOperator:
+  resources:
+    requests:
+      cpu: 100m
+      memory: 128Mi
+    limits:
+      cpu: "1"
+      memory: 1Gi
+
+prometheus:
+  service:
+    type: NodePort
+    nodePort: 30003
+  prometheusSpec:
+    retention: 7d
+    scrapeInterval: 5s
+    evaluationInterval: 30s
+    serviceMonitorSelectorNilUsesHelmValues: false
+    podMonitorSelectorNilUsesHelmValues: false

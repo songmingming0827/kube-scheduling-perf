@@ -1,0 +1,20 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: bench-volcano
+  labels:
+    benchmark.scheduling/base: volcano
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: bench-kueue
+  labels:
+    benchmark.scheduling/base: kueue
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: bench-yunikorn
+  labels:
+    benchmark.scheduling/base: yunikorn

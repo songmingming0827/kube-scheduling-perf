@@ -1,0 +1,30 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: scheduler-config
+  namespace: coscheduling
+data:
+  scheduler-config.yaml: |
+    apiVersion: kubescheduler.config.k8s.io/v1
+    kind: KubeSchedulerConfiguration
+    parallelism: 16
+    leaderElection:
+      leaderElect: false
+    clientConnection:
+      qps: 1000
+      burst: 1000
+    profiles:
+    - schedulerName: coscheduling
+      plugins:
+        multiPoint:
+          enabled:
+          - name: Coscheduling
+        queueSort:
+          enabled:
+          - name: Coscheduling
+          disabled:
+          - name: "*"
+      pluginConfig:
+      - name: Coscheduling
+        args:
+          permitWaitingTimeSeconds: 60

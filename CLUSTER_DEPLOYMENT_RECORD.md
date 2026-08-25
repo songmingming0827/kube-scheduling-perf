@@ -98,8 +98,8 @@ Prometheus Service 还自动分配了第二个 NodePort `30104` 给 Service 的 
 
 ### Controller Manager 自定义参数
 
-- `--kube-api-qps=5000`
-- `--kube-api-burst=10000`
+- `--kube-api-qps=1000`
+- `--kube-api-burst=1000`
 - `--concurrent-job-syncs=100`
 - `--node-monitor-grace-period=7200s`
 - `--node-monitor-period=3600s`
@@ -155,7 +155,7 @@ etcd 数据位于 Kind 控制面容器对应的 Docker volume。执行 `kind del
 - `https://github.com/kubernetes-sigs/kwok/releases/download/v0.7.0/kwok.yaml`
 - `https://github.com/kubernetes-sigs/kwok/releases/download/v0.7.0/stage-fast.yaml`
 
-本地覆盖将并发固定为 `nodeLease/podPlayStage/nodePlayStage=4/1/4`；仓库 `base/kwok/kwok.yaml` 保存原生配置，`deploy/resident/kwok-configuration.yaml` 保存可直接应用的 ConfigMap。不能只重新应用上游 `kwok.yaml`，否则会丢失该性能基线。
+本地覆盖将并发固定为 `nodeLease/podPlayStage/nodePlayStage=4/1/4`；仓库 `deploy/resident/manifests/kwok-configuration.yaml` 保存可直接应用的权威 ConfigMap。不能只重新应用上游 `kwok.yaml`，否则会丢失该性能基线。
 
 先建立 100 个金丝雀 KWOK Node，再由 `scale-kwok-nodes.sh 1000` 生成缺少的 Node YAML 并通过标准输入执行 `kubectl create -f -`。
 

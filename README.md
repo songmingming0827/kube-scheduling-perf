@@ -172,10 +172,9 @@ The resident API Server audit file is still reset between scheduler runs and con
 ### Repository Layout
 
 ```text
-base/                       # Resident cluster support manifests
 deploy/grafana-ingress/     # Persistent Grafana ingress
+deploy/resident/            # Versioned resident cluster deployment bundle
 hack/                       # Result collection and helper scripts
-schedulers/                 # Scheduler-specific configuration
 test/                       # Kueue, Volcano, YuniKorn tests and shared utilities
 results/                    # Generated benchmark artifacts
 ```

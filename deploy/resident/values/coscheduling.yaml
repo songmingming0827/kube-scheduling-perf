@@ -1,0 +1,32 @@
+scheduler:
+  name: coscheduling
+  image: registry.k8s.io/scheduler-plugins/kube-scheduler:v0.34.7
+  replicaCount: 1
+  leaderElect: false
+  resources:
+    requests:
+      cpu: 500m
+    limits:
+      cpu: "8"
+
+controller:
+  name: scheduler-plugins-controller
+  image: registry.k8s.io/scheduler-plugins/controller:v0.34.7
+  replicaCount: 1
+  leaderElect: false
+  resources:
+    requests:
+      cpu: 500m
+    limits:
+      cpu: "8"
+
+plugins:
+  enabled:
+  - Coscheduling
+  disabled:
+  - PrioritySort
+
+pluginConfig:
+- name: Coscheduling
+  args:
+    permitWaitingTimeSeconds: 60

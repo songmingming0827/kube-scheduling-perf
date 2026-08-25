@@ -1,0 +1,14 @@
+[Unit]
+Description=Benchmark Grafana localhost port-forward
+After=network-online.target docker.service
+Wants=network-online.target
+Requires=docker.service
+
+[Service]
+Type=simple
+ExecStart=/root/benchmark-1348-deploy/bin/kubectl --kubeconfig /root/benchmark-1348-deploy/kubeconfig --namespace monitoring port-forward --address 127.0.0.1 service/monitoring-grafana 8080:80
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target

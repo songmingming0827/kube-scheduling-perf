@@ -1,0 +1,37 @@
+basic:
+  image_pull_policy: IfNotPresent
+  image_tag_version: v1.15.1
+
+custom:
+  scheduler_schedule_period: 200ms
+  agent_scheduler_enable: false
+  controller_enabled_controllers: "*,-sharding-controller"
+  controller_kube_api_qps: 1000
+  controller_kube_api_burst: 1000
+  controller_worker_threads: 100
+  controller_worker_threads_for_gc: 100
+  controller_worker_threads_for_podgroup: 100
+  scheduler_name: volcano
+  scheduler_kube_api_qps: 1000
+  scheduler_kube_api_burst: 1000
+  scheduler_node_worker_threads: 20
+  webhooks_namespace_selector_expressions:
+  - key: benchmark.scheduling/base
+    operator: In
+    values:
+    - volcano
+  scheduler_resources:
+    requests:
+      cpu: 500m
+    limits:
+      cpu: "8"
+  controller_resources:
+    requests:
+      cpu: 500m
+    limits:
+      cpu: "8"
+  admission_resources:
+    requests:
+      cpu: 500m
+    limits:
+      cpu: "8"

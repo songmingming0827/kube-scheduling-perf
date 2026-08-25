@@ -1,0 +1,32 @@
+image:
+  repository: apache/yunikorn
+  tag: scheduler-1.9.0
+  pullPolicy: IfNotPresent
+
+resources:
+  requests:
+    cpu: 500m
+    memory: 1Gi
+  limits:
+    cpu: "8"
+    memory: 4Gi
+
+admissionController:
+  image:
+    repository: apache/yunikorn
+    tag: admission-1.9.0
+    pullPolicy: IfNotPresent
+  resources:
+    requests:
+      cpu: 500m
+      memory: 256Mi
+    limits:
+      cpu: "8"
+      memory: 1Gi
+
+yunikornDefaults:
+  admissionController.filtering.processNamespaces: ^bench-yunikorn$
+  admissionController.filtering.bypassNamespaces: ^(kube-system|yunikorn)$
+
+embedAdmissionController: true
+enableWebService: false

@@ -36,7 +36,7 @@ podPlayStageParallelism: 1
 nodePlayStageParallelism: 4
 ```
 
-其中 Pod 生命周期 stage 使用单 worker，避免大量 Running/Succeeded 状态更新集中进入同一 Volcano 调度 session；Node 和 Lease 并发保持现有集群值 `4`。仓库 `base/kwok/kwok.yaml`、`deploy/resident/kwok-configuration.yaml`、运行集群 ConfigMap 和远端权威部署包必须保持一致。
+其中 Pod 生命周期 stage 使用单 worker，避免大量 Running/Succeeded 状态更新集中进入同一 Volcano 调度 session；Node 和 Lease 并发保持现有集群值 `4`。仓库 `deploy/resident/manifests/kwok-configuration.yaml`、运行集群 ConfigMap 和服务器部署副本必须保持一致。
 
 podplaystageparallelism配置设置详见附录
 
@@ -447,10 +447,11 @@ Audit Exporter 的 ServiceMonitor 抓取间隔和超时均为 `100ms`，并保�
   → kube-apiserver
   → Volcano Admission：/jobs/mutate，/jobs/validate
   → 写入 etcd → vc-controller vcjob Informer 发现 Job 
-  → vc-controller初始化 Job Status，执行 Job 插件及按需创建 Service、ConfigMap、PVC、PodGroup等资源
-  → PodGroup 写入 etcd → Volcano scheduler Informer 发现 podgroup
-  → Volcano Scheduler 将 PodGroup 推进到 Inqueue
-  → PodGroup Status=Inqueue 经 kube-apiserver 写回 etcd → vc-controller 的 PodGroup Informer发现状态变化
+  → vc-controller初始化 Job Status，执行 Job 插件及通过 kube-apiserver 按需创建 Service、ConfigMap、PVC、PodGroup等资源
+  → PodGroup Admission：/podgroups/validate
+  → 写入 etcd → Volcano scheduler Informer 发现 podgroup
+  → Volcano Scheduler 通过 kube-apiserver 将 PodGroup 设置为 Inqueue
+  → 写入 etcd → vc-controller PodGroup Informer 发现状态变化并重新处理 VC Job
   → vc-controller 并发调用 kube-apiserver CREATE Pod
   → Volcano Admission：/pods/mutate，/pods/validate
   → 写入 etcd
@@ -463,13 +464,35 @@ Audit Exporter 的 ServiceMonitor 抓取间隔和超时均为 `100ms`，并保�
 提交 batch/v1 Job
 → kube-apiserver
 → Admission（内置准入及已注册的 Webhook）
-→ 写入 etcd
-→ kube-controller-manager 的 Job Controller 通过 Informer 发现 Job, Job 进入 Controller WorkQueue
+→ 写入 etcd → kube-controller-manager 的 Job Controller 通过 Informer 发现 Job
 → Job Controller 分批/并发调用 kube-apiserver CREATE Pod
 → Pod Admission
 → 写入 etcd
-→ Pod 创建完成，进入 Pending
-→ Scheduler 调度并 Binding
+→ Pod 创建完成，进入 Pending/等待调度状态
+```
+
+### 原生job + vc+scheduler创建pod流程：
+
+原生 Kubernetes Job 使用 Volcano Scheduler，最基本、最常用的是在 Pod 模板中指定volcano调度器
+
+Volcano 的 PodGroup Controller 会发现这些 Pod，并自动创建 PodGroup、补写 `scheduling.k8s.io/group-name` Annotation。
+
+```
+提交 Pod 模板中指定 schedulerName=volcano 的原生 batch/v1 Job
+→ kube-apiserver
+→ Admission（内置准入及已注册的 Webhook）
+→ 写入 etcd → kube-controller-manager 的 Job Controller 通过 Informer 发现 Job
+→ Job Controller 分批/并发调用 kube-apiserver CREATE Pod
+→ Pod Admission
+→ 写入 etcd → Pod 创建完成，进入 Pending/等待调度状态
+→ vc-controller 的 PodGroup Controller 通过 Pod Informer 发现 Pod
+→ vc-controller 根据 Pod 及其所属 Job 信息，通过 kube-apiserver 创建 PodGroup
+→ PodGroup Admission：/podgroups/validate
+→ PodGroup 写入 etcd
+→ vc-controller 为 Pod 写入 scheduling.k8s.io/group-name Annotation 关联 PodGroup
+→ Pod 更新写入 etcd
+→ Volcano Scheduler 通过 Informer 发现更新后的 Pod 和 PodGroup
+→ Volcano Scheduler 将 PodGroup 设置为 Inqueue，并对组内 Pod执行调度和 Binding
 ```
 
 ## 3. volcano调度周期

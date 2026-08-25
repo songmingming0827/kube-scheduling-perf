@@ -1,0 +1,83 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: kube-apiserver-audit-exporter
+  namespace: kube-system
+  labels:
+    component: kube-apiserver-audit-exporter
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      component: kube-apiserver-audit-exporter
+  template:
+    metadata:
+      labels:
+        component: kube-apiserver-audit-exporter
+    spec:
+      automountServiceAccountToken: false
+      nodeSelector:
+        node-role.kubernetes.io/control-plane: ""
+      containers:
+      - name: exporter
+        image: ghcr.io/csmvic/kube-apiserver-audit-exporter:v0.0.29
+        imagePullPolicy: IfNotPresent
+        args:
+        - --audit-log-path
+        - /var/log/kubernetes/kube-apiserver-audit.log
+        - --start-at-end
+        ports:
+        - name: http
+          containerPort: 8080
+        resources:
+          requests:
+            cpu: 100m
+            memory: 100Mi
+          limits:
+            cpu: "1"
+            memory: 1Gi
+        volumeMounts:
+        - name: audit-logs
+          mountPath: /var/log/kubernetes
+          readOnly: true
+      volumes:
+      - name: audit-logs
+        hostPath:
+          path: /var/log/kubernetes
+          type: DirectoryOrCreate
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: kube-apiserver-audit-exporter
+  namespace: kube-system
+  labels:
+    component: monitoring-kube-apiserver-audit-exporter
+spec:
+  clusterIP: None
+  selector:
+    component: kube-apiserver-audit-exporter
+  ports:
+  - name: http
+    port: 8080
+    targetPort: http
+---
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: monitoring-kube-apiserver-audit-exporter
+  namespace: monitoring
+  labels:
+    release: monitoring
+spec:
+  namespaceSelector:
+    matchNames:
+    - kube-system
+  selector:
+    matchLabels:
+      component: monitoring-kube-apiserver-audit-exporter
+  endpoints:
+  - port: http
+    path: /metrics
+    interval: 100ms
+    scrapeTimeout: 100ms

@@ -1,0 +1,42 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: scheduling-audit-dashboard
+  namespace: monitoring
+  labels:
+    grafana_dashboard: "1"
+data:
+  scheduling-audit.json: |-
+    {
+      "annotations": {"list": []},
+      "editable": true,
+      "graphTooltip": 1,
+      "panels": [
+        {
+          "datasource": {"type": "prometheus", "uid": "prometheus"},
+          "fieldConfig": {"defaults": {"unit": "s"}, "overrides": []},
+          "gridPos": {"h": 9, "w": 12, "x": 0, "y": 0},
+          "id": 1,
+          "targets": [{"expr": "histogram_quantile(0.95, sum by (cluster, user, le) (rate(pod_scheduling_latency_seconds_bucket[1m])))", "legendFormat": "{{cluster}} {{user}}", "refId": "A"}],
+          "title": "Pod scheduling latency p95",
+          "type": "timeseries"
+        },
+        {
+          "datasource": {"type": "prometheus", "uid": "prometheus"},
+          "fieldConfig": {"defaults": {"unit": "ops"}, "overrides": []},
+          "gridPos": {"h": 9, "w": 12, "x": 12, "y": 0},
+          "id": 2,
+          "targets": [{"expr": "sum(rate(api_requests_total[1m])) by (cluster, user)", "legendFormat": "{{cluster}} {{user}}", "refId": "A"}],
+          "title": "API request rate",
+          "type": "timeseries"
+        }
+      ],
+      "schemaVersion": 42,
+      "tags": ["benchmark", "scheduler", "audit"],
+      "templating": {"list": []},
+      "time": {"from": "now-30m", "to": "now"},
+      "timezone": "browser",
+      "title": "Scheduling Audit Overview",
+      "uid": "scheduling-audit-overview",
+      "version": 1
+    }

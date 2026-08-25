@@ -114,7 +114,7 @@
 
 ### 中：Kueue v0.19 在配置省略时开启了旧基线未启用的 WaitForPodsReady
 
-- 位置：部署包 `manifests/kueue-manager-config.yaml:7-36`，旧基线 `schedulers/kueue/controller/controller_manager_config.yaml:25-33`；上游 v0.19.0 `apis/config/v1beta2/defaults.go:89-105` 及 `CHANGELOG/CHANGELOG-0.19.md:27,88-90`。
+- 位置：部署包 `manifests/kueue-manager-config.yaml:7-36`，清理前旧基线可从 Git 历史中的 `schedulers/kueue/controller/controller_manager_config.yaml:25-33` 查看；上游 v0.19.0 `apis/config/v1beta2/defaults.go:89-105` 及 `CHANGELOG/CHANGELOG-0.19.md:27,88-90`。
 - 证据：当前 ConfigMap 没有 `waitForPodsReady` 或禁用它的 feature gate。Kueue v0.19.0 发布说明明确将 WaitForPodsReady 改为默认开启；默认化源码在字段缺失时创建配置，并设置 30 分钟 timeout/recovery timeout。旧 v0.10.3 基线没有启用该功能；因此简单省略字段在新版本中已不是等价配置。
 - 影响：Kueue 会额外跟踪 PodsReady 状态，并在异常或慢 Pod 情况下应用新的超时、配额释放与重排语义。这是组件升级引入的性能/行为基线变化，目前既未显式批准，也未记录或测试。
 - 建议：若目标是保持旧语义，使用 v0.19 支持的 `DisableWaitForPodsReady` feature gate 显式禁用；若要保留新默认，必须把它列为已批准的版本行为差异，补充对性能与超时语义的验收，不能将当前空缺配置记为旧基线等价。
