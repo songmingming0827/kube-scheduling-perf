@@ -490,8 +490,7 @@ Volcano 的 PodGroup Controller 会发现这些 Pod，并自动创建 PodGroup�
 → PodGroup Admission：/podgroups/validate
 → PodGroup 写入 etcd
 → vc-controller 为 Pod 写入 scheduling.k8s.io/group-name Annotation 关联 PodGroup
-→ Pod 更新写入 etcd
-→ Volcano Scheduler 通过 Informer 发现更新后的 Pod 和 PodGroup
+→ Pod 更新写入 etcd → Volcano Scheduler 通过 Informer 发现更新后的 Pod 和 PodGroup
 → Volcano Scheduler 将 PodGroup 设置为 Inqueue，并对组内 Pod执行调度和 Binding
 ```
 
