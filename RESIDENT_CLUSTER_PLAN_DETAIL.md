@@ -38,20 +38,7 @@ nodePlayStageParallelism: 4
 
 其中 Pod 生命周期 stage 使用单 worker，避免大量 Running/Succeeded 状态更新集中进入同一 Volcano 调度 session；Node 和 Lease 并发保持现有集群值 `4`。仓库 `base/kwok/kwok.yaml`、`deploy/resident/kwok-configuration.yaml`、运行集群 ConfigMap 和远端权威部署包必须保持一致。
 
-同步更新远端部署包：
-
-```text
-FORMAL_KWOK_NODES=1000
-```
-
-并将基础验收标准改为：
-
-```text
-1001/1001 Node Ready
-1000 个 type=kwok Node
-```
-
-缩容完成后更新集群部署记录和 `.codex/AGENT.md`。
+podplaystageparallelism配置设置详见附录
 
 ### 2.2 将现有结果展示能力放入常驻集群
 
@@ -463,11 +450,12 @@ Audit Exporter 的 ServiceMonitor 抓取间隔和超时均为 `100ms`，并保�
 提交 Volcano Job
   → kube-apiserver
   → Volcano Admission：/jobs/mutate，/jobs/validate
-  → 写入 etcd
-  → Volcano Job Informer 发现 Job，Volcano Job 进入 WorkQueue
-  → vc controller初始化 Job Status，通过 kube-apiserver 创建 PodGroup
+  → 写入 etcd → vc-controller vcjob Informer 发现 Job 
+  → vc-controller初始化 Job Status，执行 Job 插件及按需创建 Service、ConfigMap、PVC、PodGroup等资源
+  → PodGroup 写入 etcd → Volcano scheduler Informer 发现 podgroup
   → Volcano Scheduler 将 PodGroup 推进到 Inqueue
-  → VC Job Controller 并发调用 kube-apiserver CREATE Pod
+  → PodGroup Status=Inqueue 经 kube-apiserver 写回 etcd → vc-controller 的 PodGroup Informer发现状态变化
+  → vc-controller 并发调用 kube-apiserver CREATE Pod
   → Volcano Admission：/pods/mutate，/pods/validate
   → 写入 etcd
   → Pod 创建完成，进入 Pending/等待调度状态
@@ -553,3 +541,113 @@ Volcano Client请求上限  ≈ 1000 QPS
 
 - `reclaim` 基本没有实际回收工作，主要增加一次扫描。
 - `backfill` 通常也只产生少量额外遍历。
+
+## 6. pod的删除机制
+
+1. 对于job、deployment等资源下的pod删除，通常的流程是：先删除job、deployment等父级资源，其所属的pod再通过k8s garbage collector(k8s 的GC)机制根据ownerReferences删除对应的pod
+2. 对于普通的pod，用户执行kubectl delete pod后，直接请求api-server删除pod。
+
+### **这个机制能够解释“场景3+volcano”测试时吞吐波动的原因：**
+
+1. 首先表层的原因是因为vc-job定义了ttl=1，这就导致创建成功的job存活1s后就会被清理，清理的粗略流程如下：
+
+```
+vc-controller 判断 Job TTL 到期并删除 Job`
+→ `kube-controller-manager 的 Garbage Collector 删除所属 Pod`
+→ `API Server 通知 vc-scheduler`
+→ `vc-scheduler 从自己的 cache 移除这些 Pod
+```
+
+2. 当`vc-scheduler`从自己的 cache 移除这些 Pod的时间如果发生在vc-scheduler的调度周期内，就会影响vc-scheduler的调度时间，因为vc-scheduler需要多花一些资源和时间去处理`大量的pod删除通知`。（要知道场景三下，一个job会包含500个pod的，处理这么多的pod的删除通知，确实可能会影响调度）
+
+3. scheduler的处理机制（两条并行流程）
+
+   1. 调度周期：调度周期开始，打开session，执行各种action，调度周期结束；等待调度周期间隔时间；下一轮调度～
+   2. 事件处理：随时接收pod增删通知，并更新scheduler cache。
+
+4. 结论：产生波动的原因就是，vc-scheduler处理`大量的pod删除通知`时，可能会在调度周期，也可能不在调度周期内；如果在，就会影响scheduler的调度时间，如果又发生在“最后一轮session“就可能会导致最后binding的时间被拉长，导致吞吐变小。我们统计吞吐使用的公式是
+
+   ```
+   吞吐 = pod数量 / (最后binding时间 - 第一个binding时间)
+   ```
+
+## 7. podplaystageparallelism=1
+
+**定义**：podplaystageparallelism是kwok控制器推进pod生命周期的并发控制设置
+
+**解释定义**：podplaystageparallelism默认值是4，含义是能最多并行处理4个pod的阶段推进，主要推进的阶段包括：running、succeed、deleted
+
+```
+对应主要推进的阶段
+`pod-ready`：把 Pod 状态更新为 Running，并填写 IP、Conditions、ContainerStatuses。
+`pod-complete`：把 Pod 更新为 Succeeded。
+`pod-delete`：处理 finalizer 并删除 Pod。
+```
+
+**podplaystageparallelism是怎么影响scheduler调度的**：
+
+1. kwok会更新pod状态(running、succeed、failed、deleted)，scheduler 收到该通知后，会调用updatepod来同步cache中的pod信息，例如如果是pod变成deleted后，scheduler需要额外的处理把cache中的pod移出去，这个过程中会涉及 竞争cache锁、内存分配、CPU cache等。
+
+2. 而scheduler的gomaxprocs设置为32，最大并发goroutine也只有32，如果updatepod发生在scheduler的session期间时，就会和调度相关的goroutine抢占P，主要可观测到的现象就是runnable goroutine等待变多，从而可能会拖慢scheduler的调度。
+
+   > 观测结果：runnable goroutine等待时间超过1ms的记为RG，podplaystageparallelism=4（3772）比=1（2132）多了77%左右；
+   >
+   > 结果来自文档<volcano-v1.15.1-scenario3-throughput-variance-report.md "与 `podPlayStageParallelism=4` 的 trace6 对比">
+   >
+   > >  注意：虽然update的事件相关的goroutine一般只有一个，那为什么runnable goroutine等待时间会变多这么多呢？
+   > >
+   > > 虽然 `UpdatePod` 回调通常由一个 informer handler顺序执行，但在 `=4` 时它会更频繁地参与运行：
+   > >
+   > > ```
+   > > UpdatePod处理一个事件
+   > > → 让出或阻塞
+   > > → 再次被唤醒处理下一个事件
+   > > → 与调度worker交替执行
+   > > ```
+
+**podplaystageparallelism会导致波动**
+
+scheduler的session期间发生updatepod的数量是有波动的，甚至会在10 ～ 1000的范围内波动，这就导致调度耗时、吞吐和尾延迟发生波动；
+
+> scheduler的session期间发生updatepod的数量这个通常没有办法控制，
+>
+> 1. go的goroutine没有优先级，每次调度运行时都是排队进行，所以有一定的随机性
+
+**podplaystageparallelism=1会减小波动**
+
+设置为1后，只能并行处理一个pod的阶段推进，这会显著减少 kwok 对pod的状态更新速度，从而在session窗口内updatepod的数量也会变得少很多，这样即使出现波动，那么波动的范围也是在有限的可控范围内的
+
+**podplaystageparallelism=1会影响我们关心的调度过程吗**
+
+并不会，我们针对所有阶段一一展开说明
+
+1. kwok更新pod的running状态，这种情况的发生过程是这样的：在scheduler的action中，pod被更新为binding状态后，然后向api-server发送bind请求，这个bind请求是异步发生的，api-server收到请求后写入 `Pod.spec.nodeName`并持久化到etcd，scheduler 收到Pod 更新，**执行 UpdatePod，更新scheduler cache，把task更新到bound**。KWOK 观察到 Pod.spec.nodeName 已写入后，按 pod-ready stage 将 Pod 状态推进为 Running，scheduler收到pod更新为running的通知，**执行updatepod，更新scheduler cache，把task更新到running**；
+   重要的是，**scheduler 进入 `Binding` 后，就已经把它从后续调度候选中排除**，并继续处理其他 Pod；它不会等待 Bind API 返回，更不会等待 KWOK 更新 `Running`。所以也不会影响scheduler对pod状态的判断。
+2. kwok更新pod的succeed状态，发生在已binding、已 Running 的 Pod 后续生命周期，所以不影响该 Pod 的选点
+3. kwok更新pod的failed、deleted状态，这些不在正常调度内考虑范围。
+
+但是可能会影响pod complete、job complete等，这个我们可以暂时不考虑
+
+**最后的说明**
+
+我们使用的机器的CPU当前是32核，所以gomaxprocs最大只能设置为32；如果未来使用更多物理CPU，并同步提高scheduler的CPU limit和GOMAXPROCS，可能进一步降低UpdatePod与调度goroutine之间的运行时竞争；但当前实验表明主要改善来自将KWOK状态更新摊平，尚不能证明GOMAXPROCS=32是主要瓶颈，也不能断定设置为64后影响会基本消失。
+
+> 为什么GOMAXPROCS=64核也不一定有效
+>
+> 1. 因为从实验结果来看所以存在runnable goroutine的排队，但是即使是排队时仍存在idle P；
+>
+> 2. 更多 `UpdatePod` 事件不等于同时产生更多 `UpdatePod` goroutine。Pod informer 通常由一个事件处理链顺序调用 `UpdatePod`，事件多主要形成连续处理或积压，而不是上千个 `UpdatePod` goroutine同时争抢 32 个 P。
+> 3. `UpdatePod` 还会涉及 scheduler cache 锁、内存分配、CPU cache 和 Go runtime 干扰。这些串行或共享路径不能通过把 `GOMAXPROCS` 从 32 提高到 64直接消除。
+>    1. cache锁：等待共享资源，例如
+>       1. **创建 session 时的 `Snapshot()`**
+>          每轮 session 开始前，scheduler 要锁住 cache，复制 Jobs、Tasks、Nodes、Queues 等数据形成快照。
+>          如果 `UpdatePod` 正在持锁，`Snapshot()` 就要等待；反过来，大规模 Snapshot 期间 `UpdatePod` 也要等待。
+>       2. **`AddBindTask()`**
+>          Pod 选中节点后，scheduler 要锁住 cache，把 Task 标记为 `Binding`、加入目标 Node，并放进 Bind 队列。
+>          这和 `UpdatePod` 使用同一把锁，因此集中到来的状态更新可能推迟 Task 进入 Binding 流程。
+>          提醒：通常不是同一个 Task，也仍会竞争同一把锁
+>    2. 内存分配：增加分配和GC工作；`UpdatePod` 通常会重新构造 `TaskInfo`、更新 map、复制部分 Pod/资源信息，产生内存分配。大量更新集中发生时，会增加 allocator 和 GC assist 工作，使正在执行 Predicate/Prioritize 的 goroutine也分担部分内存回收成本。
+>    3. CPU cache：是 goroutine虽然能运行，但每次运行的效率降低。`UpdatePod` 与调度热循环交替运行，会反复读写不同内存区域，可能挤出 Predicate/Prioritize 正在使用的 CPU cache 数据。
+>    4. Go runtime：Go runtime需要调度这些 goroutine、维护运行队列并进行 work stealing，使调度热路径的单位执行成本发生变化。
+
+## 111
