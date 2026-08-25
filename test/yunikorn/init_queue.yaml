@@ -6,6 +6,7 @@ metadata:
 data:
   kubernetes.qps: "1000" # <--QPS
   kubernetes.burst: "1000" # <--QPS
+  service.schedulingInterval: "200ms"
   queues.yaml: |
     partitions:
     - name: default

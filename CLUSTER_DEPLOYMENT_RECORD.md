@@ -285,7 +285,7 @@ Kueue、Scheduler Plugins 和 kube-prometheus-stack 的期望 SHA-256 已写入 
 - Validating Webhook 只匹配 `kubernetes.io/metadata.name=yunikorn`，用于配置 ConfigMap
 - Admission 绕过 `^(kube-system|yunikorn)$`
 - 首次实验前可以不存在 `yunikorn-configs`；`TestInit` 会创建，后续仅在内容变化时原地更新并重启 Scheduler，内容一致时不操作
-- `TestInit` 写入专用 `queues.yaml` 以及 `kubernetes.qps=1000`、`kubernetes.burst=1000`；实验结束和 `make down` 均不删除或恢复该 ConfigMap
+- `TestInit` 写入专用 `queues.yaml`、`kubernetes.qps/burst=1000/1000` 与 `service.schedulingInterval=200ms`；该间隔与 Volcano 的 200ms 周期对齐。配置变化会重启 YuniKorn Scheduler；实验结束和 `make down` 均不删除或恢复该 ConfigMap
 - Scheduler 和 Admission 均未设置 `GOMEMLIMIT`、`GOGC`，使用与旧基线一致的 Go runtime 默认行为
 
 资源配置：

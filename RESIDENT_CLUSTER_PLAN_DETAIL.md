@@ -220,7 +220,7 @@ MEMORY_PER_NODE = 64Gi
 
 - Kueue：ResourceFlavor、WorkloadPriorityClass、ClusterQueue、LocalQueue
 - Volcano：Scheduler ConfigMap、`benchmark-root`、子 Queue、PriorityClass
-- YuniKorn：`yunikorn-configs`
+- YuniKorn：`yunikorn-configs`（`kubernetes.qps/burst=1000/1000`、`service.schedulingInterval=200ms`）
 
 `TestInit` 不再创建 Node。
 
