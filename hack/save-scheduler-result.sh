@@ -127,7 +127,7 @@ audit_stats="$(
       select((.responseStatus.code // 0) >= 200 and (.responseStatus.code // 0) < 300) |
       select($scheduler != "yunikorn" or ((.objectRef.name // "") | startswith("tg-") | not)) |
       {
-        name: .objectRef.name,
+        name: (.objectRef.name // .responseObject.metadata.name),
         subresource: (.objectRef.subresource // ""),
         timestamp: (.stageTimestamp | ts_epoch)
       } |

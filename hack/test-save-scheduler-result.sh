@@ -21,7 +21,7 @@ write_events_before_rotation() {
   local path="$1"
 
   printf '%s\n' \
-    '{"stage":"ResponseComplete","verb":"create","objectRef":{"resource":"pods","namespace":"bench-kueue","name":"pod-1"},"responseStatus":{"code":201},"stageTimestamp":"2026-08-20T00:00:01.000Z"}' \
+    '{"stage":"ResponseComplete","verb":"create","objectRef":{"resource":"pods","namespace":"bench-kueue"},"responseObject":{"metadata":{"name":"pod-1"}},"responseStatus":{"code":201},"stageTimestamp":"2026-08-20T00:00:01.000Z"}' \
     '{"stage":"ResponseComplete","verb":"create","objectRef":{"resource":"pods","namespace":"bench-kueue","name":"pod-2"},"responseStatus":{"code":201},"stageTimestamp":"2026-08-20T00:00:01.500Z"}' \
     '{"stage":"ResponseComplete","verb":"create","objectRef":{"resource":"pods","namespace":"bench-kueue","name":"pod-1","subresource":"binding"},"responseStatus":{"code":201},"stageTimestamp":"2026-08-20T00:00:02.000Z"}' >>"${path}"
 }
