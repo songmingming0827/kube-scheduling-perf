@@ -39,8 +39,11 @@ wait_for_pod_scheduled() {
 cleanup
 kc apply -f "${MANIFEST}"
 
-for target in volcano kueue yunikorn; do
+for target in volcano agent kueue yunikorn; do
   namespace="bench-${target}"
+  if [[ "${target}" == agent ]]; then
+    namespace="bench-volcano"
+  fi
   wait_for_pod_scheduled "${namespace}" "${target}"
   printf '%s_scheduled=true\n' "${target}"
 done

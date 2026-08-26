@@ -32,8 +32,9 @@ type Options struct {
 	CpuRequestPerPod    string
 	MemoryRequestPerPod string
 
-	Gang       bool
-	Preemption bool
+	Gang        bool
+	Preemption  bool
+	VolcanoMode string
 }
 
 func (o *Options) AddFlags() {
@@ -60,6 +61,7 @@ func (o *Options) AddFlags() {
 	flag.StringVar(&o.MemoryRequestPerPod, "memory-request-per-pod", getEnv("MEMORY_REQUEST_PER_POD", "1Gi"), "Memory request per pod")
 	flag.BoolVar(&o.Gang, "gang", getEnvBool("GANG", false), "Enable gang scheduling")
 	flag.BoolVar(&o.Preemption, "preemption", getEnvBool("PREEMPTION", false), "Enable preemption")
+	flag.StringVar(&o.VolcanoMode, "volcano-mode", getEnv("VOLCANO_MODE", "batch"), "Volcano scheduler mode: agent or batch")
 }
 
 func getEnv(key, fallback string) string {

@@ -1,0 +1,54 @@
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: agent-job-#{{ .name }}-#{{ .index }}
+  namespace: bench-volcano
+spec:
+  parallelism: #{{ .size }}
+  completions: #{{ .size }}
+  backoffLimit: 1
+  template:
+    metadata:
+      annotations:
+        #{{ if .duration }}
+        pod-complete.stage.kwok.x-k8s.io/delay: "#{{ .duration }}"
+        #{{ end }}
+      labels:
+        test-instance: "1"
+    spec:
+      restartPolicy: Never
+      schedulerName: agent-scheduler
+      #{{ if .priority }}
+      priorityClassName: #{{ .priority }}
+      #{{ end }}
+      containers:
+      - name: sleep
+        image: hello-world
+        args:
+        #{{ if .duration }}
+        - "#{{ .duration }}"
+        #{{ else }}
+        - "30s"
+        #{{ end }}
+        resources:
+          requests:
+            cpu: #{{ .cpuRequestPerPod }}
+            memory: #{{ .memoryRequestPerPod }}
+          limits:
+            cpu: #{{ .cpuRequestPerPod }}
+            memory: #{{ .memoryRequestPerPod }}
+      affinity:
+        nodeAffinity:
+          requiredDuringSchedulingIgnoredDuringExecution:
+            nodeSelectorTerms:
+            - matchExpressions:
+              - key: type
+                operator: In
+                values:
+                - "kwok"
+      tolerations:
+      - key: "kwok.x-k8s.io/node"
+        operator: "Exists"
+        effect: "NoSchedule"
+      nodeSelector:
+        "type": kwok

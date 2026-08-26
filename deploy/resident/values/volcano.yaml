@@ -4,7 +4,8 @@ basic:
 
 custom:
   scheduler_schedule_period: 200ms
-  agent_scheduler_enable: false
+  agent_scheduler_enable: true
+  agent_scheduler_worker_count: 1
   controller_enabled_controllers: "*,-sharding-controller"
   controller_kube_api_qps: 1000
   controller_kube_api_burst: 1000

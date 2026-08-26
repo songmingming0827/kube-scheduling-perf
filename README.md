@@ -162,7 +162,7 @@ Generic existing-cluster support is not implemented. The current Makefile assume
 | Stack | Components |
 | --- | --- |
 | Kueue | Kueue Controller, default kube-scheduler for non-Gang tests, Coscheduling Scheduler and Controller for Gang tests |
-| Volcano | Volcano Scheduler, Controllers, and Admission |
+| Volcano | Volcano Batch Scheduler, Agent Scheduler, Controllers, and Admission |
 | YuniKorn | YuniKorn Scheduler and Admission Controller |
 
 ### Metrics

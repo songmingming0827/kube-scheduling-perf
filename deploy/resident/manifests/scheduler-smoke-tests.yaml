@@ -33,6 +33,37 @@ spec:
               cpu: 100m
               memory: 32Mi
 ---
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: smoke-agent
+  namespace: bench-volcano
+  labels:
+    benchmark.scheduling/smoke: agent
+spec:
+  parallelism: 1
+  completions: 1
+  template:
+    metadata:
+      labels:
+        benchmark.scheduling/smoke: agent
+    spec:
+      restartPolicy: Never
+      schedulerName: agent-scheduler
+      nodeSelector:
+        type: kwok
+      tolerations:
+      - key: kwok.x-k8s.io/node
+        operator: Exists
+        effect: NoSchedule
+      containers:
+      - name: worker
+        image: registry.k8s.io/pause:3.10.1
+        resources:
+          requests:
+            cpu: 100m
+            memory: 32Mi
+---
 apiVersion: kueue.x-k8s.io/v1beta2
 kind: ResourceFlavor
 metadata:

@@ -24,6 +24,9 @@ var initQueueYaml string
 //go:embed batch_job.yaml
 var batchJobYaml string
 
+//go:embed agent_job.yaml
+var agentJobYaml string
+
 type VolcanoProvider struct {
 	utils.Options
 }
@@ -86,7 +89,11 @@ func (p *VolcanoProvider) InitCase(ctx context.Context) error {
 	}
 
 	if configChanged {
-		err = utils.RestartDeployment(ctx, utils.Resources, "volcano-scheduler", "volcano-system")
+		schedulerDeployment := "volcano-scheduler"
+		if p.VolcanoMode == "agent" {
+			schedulerDeployment = "volcano-agent-scheduler"
+		}
+		err = utils.RestartDeployment(ctx, utils.Resources, schedulerDeployment, "volcano-system")
 		if err != nil {
 			return err
 		}
@@ -182,7 +189,11 @@ func (p *VolcanoProvider) WaitJobsCompleted(ctx context.Context) error {
 
 	return wait.For(func(ctx context.Context) (bool, error) {
 		jobs := &unstructured.UnstructuredList{}
-		jobs.SetAPIVersion("batch.volcano.sh/v1alpha1")
+		if p.VolcanoMode == "agent" {
+			jobs.SetAPIVersion("batch/v1")
+		} else {
+			jobs.SetAPIVersion("batch.volcano.sh/v1alpha1")
+		}
 		jobs.SetKind("JobList")
 		if err := namespacedResources.List(ctx, jobs); err != nil {
 			return false, err
@@ -192,12 +203,30 @@ func (p *VolcanoProvider) WaitJobsCompleted(ctx context.Context) error {
 		}
 
 		for i := range jobs.Items {
-			phase, found, err := unstructured.NestedString(jobs.Items[i].Object, "status", "state", "phase")
-			if err != nil {
-				return false, err
-			}
-			if !found || phase != "Completed" {
-				return false, nil
+			if p.VolcanoMode == "agent" {
+				conditions, found, err := unstructured.NestedSlice(jobs.Items[i].Object, "status", "conditions")
+				if err != nil {
+					return false, err
+				}
+				completed := false
+				for _, condition := range conditions {
+					item, ok := condition.(map[string]any)
+					if ok && item["type"] == "Complete" && item["status"] == "True" {
+						completed = true
+						break
+					}
+				}
+				if !found || !completed {
+					return false, nil
+				}
+			} else {
+				phase, found, err := unstructured.NestedString(jobs.Items[i].Object, "status", "state", "phase")
+				if err != nil {
+					return false, err
+				}
+				if !found || phase != "Completed" {
+					return false, nil
+				}
 			}
 		}
 		return true, nil
@@ -205,7 +234,11 @@ func (p *VolcanoProvider) WaitJobsCompleted(ctx context.Context) error {
 }
 
 func (p *VolcanoProvider) addSingleJobs(ctx context.Context, podSize int, queueIndex int, priority string, duration string) error {
-	return decoder.DecodeEach(ctx, strings.NewReader(utils.YamlWithArgs(batchJobYaml, map[string]any{
+	jobYaml := batchJobYaml
+	if p.VolcanoMode == "agent" {
+		jobYaml = agentJobYaml
+	}
+	return decoder.DecodeEach(ctx, strings.NewReader(utils.YamlWithArgs(jobYaml, map[string]any{
 		"name":                fmt.Sprintf("%s-%d", priority, queueIndex),
 		"queue":               fmt.Sprintf("test-queue-%s-%d", priority, queueIndex),
 		"size":                podSize,

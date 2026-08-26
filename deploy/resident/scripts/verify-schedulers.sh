@@ -18,6 +18,7 @@ kc wait --for=condition=Established crd/podgroups.scheduling.x-k8s.io --timeout=
 kc wait --for=condition=Established crd/elasticquotas.scheduling.x-k8s.io --timeout=2m
 
 kc rollout status deployment/volcano-scheduler -n volcano-system --timeout=2m
+kc rollout status deployment/volcano-agent-scheduler -n volcano-system --timeout=2m
 kc rollout status deployment/volcano-controllers -n volcano-system --timeout=2m
 kc rollout status deployment/volcano-admission -n volcano-system --timeout=2m
 kc rollout status deployment/kueue-controller-manager -n kueue-system --timeout=2m
@@ -31,6 +32,7 @@ for target in \
   coscheduling/coscheduling/scheduler-plugins-scheduler \
   coscheduling/scheduler-plugins-controller/scheduler-plugins-controller \
   volcano-system/volcano-scheduler/volcano-scheduler \
+  volcano-system/volcano-agent-scheduler/volcano-agent-scheduler \
   volcano-system/volcano-controllers/volcano-controllers \
   volcano-system/volcano-admission/admission \
   yunikorn/yunikorn-scheduler/yunikorn-scheduler-k8s \
@@ -66,6 +68,7 @@ kc get validatingwebhookconfiguration yunikorn-admission-controller-validations 
   ' >/dev/null
 
 printf 'volcano_release=%s\n' "$(helm --kubeconfig "${KUBECONFIG_PATH}" list -n volcano-system --short)"
+printf 'volcano_agent_scheduler_image=%s\n' "$(kc get deployment volcano-agent-scheduler -n volcano-system -o jsonpath='{.spec.template.spec.containers[0].image}')"
 printf 'kueue_image=%s\n' "$(kc get deployment kueue-controller-manager -n kueue-system -o jsonpath='{.spec.template.spec.containers[0].image}')"
 printf 'coscheduling_image=%s\n' "$(kc get deployment coscheduling -n coscheduling -o jsonpath='{.spec.template.spec.containers[0].image}')"
 printf 'yunikorn_image=%s\n' "$(kc get deployment yunikorn-scheduler -n yunikorn -o jsonpath='{.spec.template.spec.containers[0].image}')"

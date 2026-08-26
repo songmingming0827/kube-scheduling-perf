@@ -6,6 +6,7 @@
 |---|---|---|
 | KWOK | `registry.k8s.io/kwok/kwok:v0.7.0` | `sha256:2bb52d4cdd8b3e22e53ec86643a02ee84abdd8cec825269acdf7706d54c0ad6e` |
 | Volcano Scheduler | `volcanosh/vc-scheduler:v1.15.1` | `sha256:e79dc85279b5fd2c5e431571b4683f819ff0dfeacdf230fca49e6ce1f4509ae1` |
+| Volcano Agent Scheduler | `volcanosh/vc-agent-scheduler:v1.15.1` | `sha256:a2920ca3503fc0bf6b1caafc32ae69afdea20fd20e71fd6a1d2cd00385c34ab8` |
 | Volcano Controller | `volcanosh/vc-controller-manager:v1.15.1` | `sha256:555245dd5c73524dee627ad0c2e308c9dd95af234df791d11e6bcdfa2f33a4ef` |
 | Volcano Webhook | `volcanosh/vc-webhook-manager:v1.15.1` | `sha256:569e3671b6d9619c175062e6d3e82bfe3bb4bc3628b36347406ccc07f10fe12c` |
 | Kueue | `registry.k8s.io/kueue/kueue:v0.19.0` | `sha256:6fe2cbe4c7799eed1a8d49898c38b8bd73f1572df1825d7cf266ec9e2af70bec` |

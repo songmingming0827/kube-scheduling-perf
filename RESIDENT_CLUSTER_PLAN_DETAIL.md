@@ -11,7 +11,7 @@
 ```text
 Kueue + Coscheduling
   -> 清理并恢复
-Volcano
+Volcano（场景 1～4 使用 Agent Scheduler，场景 5～8 使用 Batch Scheduler）
   -> 清理并恢复
 YuniKorn
   -> 清理并恢复
@@ -52,6 +52,26 @@ podplaystageparallelism配置设置详见附录
 
 完成后，源码中的 `save-result-images.sh` 不需要切换到其他端口。
 
+### 2.3 同时部署两套 Volcano Scheduler
+
+常驻集群同时部署 Volcano Batch Scheduler 和 Agent Scheduler：
+
+- `volcano-scheduler`：使用 `schedulerName=volcano`，继续处理 VCJob 和 Gang 场景
+- `volcano-agent-scheduler`：使用 `schedulerName=agent-scheduler`，处理原生 Kubernetes Job 的逐 Pod 调度
+- 两者镜像版本均为 `v1.15.1`，副本数均为 `1`
+- 两者复用 `1000/1000` 的 Kubernetes API QPS/Burst 和 `20` 个 Node Worker，CPU 基线均为 `500m/8`
+- Agent Scheduler 固定使用 `1` 个 Scheduler Worker，采用事件驱动调度，不设置 Batch Scheduler 的 `schedule-period`
+
+非测试状态下两套 Scheduler、`volcano-controllers` 和 `volcano-admission` 均保持 `1` 副本。两套 Scheduler 只处理与自身 `schedulerName` 匹配的 Pod，不会争抢同一个待调度 Pod。
+
+> 20个node worker
+>
+> 设置位置：deploy/resident/values/volcano.yaml
+>
+> 对应启动参数 --node-worker-threads=20
+>
+> 作用：Scheduler cache 里并行处理 Node 增删改/同步的 worker 数量
+
 ## 3. 运行使用方式
 
 ### 3.1 完整运行
@@ -62,7 +82,21 @@ podplaystageparallelism配置设置详见附录
 make
 ```
 
-`make` 依次调用 `scenario-1` 至 `scenario-8`。每个场景依次运行 Kueue、Volcano 和 YuniKorn，三个调度器均完成后生成相对 Dashboard、场景图片与元数据，并保存各调度器的 `window.txt` 和 `report.txt`。
+`make` 依次调用 `scenario-1` 至 `scenario-8`。每个场景依次运行 Kueue、Volcano 和 YuniKorn；Volcano 在场景 1～4 默认使用 Agent Scheduler，在场景 5～8 默认使用 Batch Scheduler。三个调度器均完成后生成相对 Dashboard、场景图片与元数据，并保存各调度器的 `window.txt` 和 `report.txt`。
+
+执行顺序：
+
+```text
+make
+└── scenario-1 → scenario-2 → … → scenario-8（串行）
+    └── 每个场景调用 serial-test
+        ├── Kueue：prepare → start → end
+        ├── Volcano：prepare → start → end（场景 1～4 Agent，场景 5～8 Batch）
+        ├── YuniKorn：prepare → start → end
+        ├── update-relative-dashboard
+        ├── save-result
+        └── save-scheduler-result（分别保存三个调度器结果）
+```
 
 ### 3.2 单场景运行
 
@@ -72,12 +106,25 @@ make
 make scenario-2
 ```
 
-该命令载入场景 2 的固定参数，再调用 `serial-test` 依次运行三个调度器。测试完成后更新场景 2 的相对 Dashboard 和完整场景结果，并分别保存：
+该命令载入场景 2 的固定参数，再调用 `serial-test` 依次运行三个调度器。`VOLCANO_MODE=auto` 会将场景 2 解析为 Agent 模式。测试完成后更新场景 2 的相对 Dashboard 和完整场景结果，并分别保存：
 
 ```text
 results/scenario-2/kueue/
 results/scenario-2/volcano/
 results/scenario-2/yunikorn/
+```
+
+执行顺序：
+
+```text
+scenario-2
+└── serial-test
+    ├── Kueue：prepare → start → end
+    ├── Volcano Agent Scheduler：prepare → start → end
+    ├── YuniKorn：prepare → start → end
+    ├── update-relative-dashboard
+    ├── save-result
+    └── save-scheduler-result（分别保存三个调度器结果）
 ```
 
 ### 3.3 单场景、单调度器运行
@@ -114,7 +161,7 @@ scenario-2
     └── save-scheduler-result
 ```
 
-`up-volcano` 停用 Kueue、Coscheduling 和 YuniKorn，将 Volcano Deployment 设置为 1 副本后统一重启并等待新 Pod Ready；测试资源限定在 `bench-volcano`。Audit Exporter 使用 `cluster=volcano` 从当前审计日志末尾重新采集。`end-volcano` 确认最终指标已进入 Prometheus 后清理本轮资源并恢复全部调度组件。
+`up-volcano` 停用 Kueue、Coscheduling 和 YuniKorn，再根据 `VOLCANO_MODE` 选择目标 Scheduler。Agent 模式只保留并重启 `volcano-agent-scheduler`，将 Batch Scheduler、Controller 和 Admission 缩容到 0；Batch 模式保持原有三组件启停和重启流程。测试资源统一限定在 `bench-volcano`。Audit Exporter 继续使用 `cluster=volcano` 从当前审计日志末尾重新采集。`end-volcano` 确认最终指标已进入 Prometheus 后清理本轮资源并恢复包括两套 Volcano Scheduler 在内的全部调度组件。
 
 最后只更新：
 
@@ -124,7 +171,7 @@ results/scenario-2/volcano/
 └── report.txt
 ```
 
-不会更新三调度器相对 Dashboard，也不会覆盖 `results/scenario-2` 中已有的完整对比结果。将 `SCHEDULERS` 改为 `kueue` 或 `yunikorn` 时执行相同流程，并写入对应调度器目录。
+不会更新三调度器相对 Dashboard，也不会覆盖 `results/scenario-2` 中已有的完整对比结果。Agent 和 Batch 继续共用逻辑名称 `volcano`、审计标签和结果目录，实际模式记录在完整场景的 `envs.txt` 中。将 `SCHEDULERS` 改为 `kueue` 或 `yunikorn` 时执行相同流程，并写入对应调度器目录。
 
 `scenario-1` 至 `scenario-8` 分别对应八个固定场景。运行异常中断后执行 `make down` 恢复常驻集群基线。
 
@@ -138,7 +185,10 @@ results/scenario-2/volcano/
 KIND_CLUSTER_NAME = volcano-benchmark-1348
 KUBECONFIG = /root/benchmark-1348-deploy/kubeconfig
 KUBECTL = /root/benchmark-1348-deploy/bin/kubectl
+VOLCANO_MODE = auto
 ```
+
+`VOLCANO_MODE` 接受 `auto`、`agent` 和 `batch`。`auto` 根据 `RELATIVE_DASHBOARD_SCENARIO` 将场景 1～4 解析为 `agent`、场景 5～8 解析为 `batch`；显式传值可以覆盖默认选择。Agent 不支持 Gang，因此 `GANG=true` 与 Agent 模式的组合直接拒绝执行。
 
 节点数量和单节点容量属于常驻集群基线，由部署包的验证脚本检查，不再作为测试 Makefile 参数暴露。
 
@@ -150,7 +200,7 @@ KUBECTL = /root/benchmark-1348-deploy/bin/kubectl
 - 检查 Kubernetes client/server 都是 `v1.34.8`
 - 检查 `1001/1001` Node Ready
 - 检查 `1000` 个 KWOK Node
-- 检查三套调度器、Webhook、Controller 和关键 CRD 存在
+- 检查 Kueue、Coscheduling、Volcano Batch、Volcano Agent 和 YuniKorn，以及对应 Webhook、Controller 和关键 CRD 存在
 - 检查常驻监控、Grafana 和 Audit Exporter 可用
 - 创建本地结果、日志和临时状态目录
 - 编译三套测试二进制
@@ -159,11 +209,11 @@ KUBECTL = /root/benchmark-1348-deploy/bin/kubectl
 
 ### 4.3 `up-<scheduler>`
 
-每轮不再保存调度组件副本数、当前调度器或 ConfigMap。`up-<scheduler>` 将本轮目标组件设置为 `1` 副本后对其全部 Deployment 执行 `rollout restart`，将其他调度组件设置为 `0` 副本，等待新 Pod Ready、旧 Pod 和非目标 Pod 全部退出，再清理对应测试资源；不重复应用任何调度器配置。实验配置统一由后续 `test-init-<scheduler>` 原地更新。
+每轮不再保存调度组件副本数、当前调度器或 ConfigMap。`up-<scheduler>` 将本轮目标组件设置为 `1` 副本后对其全部 Deployment 执行 `rollout restart`，将其他调度组件设置为 `0` 副本，等待新 Pod Ready、旧 Pod 和非目标 Pod 全部退出，再清理对应测试资源；不重复应用任何调度器配置。Volcano 目标组件由 `VOLCANO_MODE` 决定，实验配置统一由后续 `test-init-<scheduler>` 原地更新。
 
 #### `up-kueue`
 
-- 将 Volcano 和 YuniKorn 相关 Deployment 缩容到 0
+- 将两套 Volcano Scheduler、Volcano Controller、Admission 和 YuniKorn 相关 Deployment 缩容到 0
 - 将 Kueue Controller、Coscheduling Scheduler 和 Controller 恢复到 1
 - 重启 Kueue Controller、Coscheduling Scheduler 和 Controller
 - 等待非目标 Deployment 和 Pod 全部归零、目标新 Pod Ready 且旧 Pod 完全退出
@@ -172,14 +222,14 @@ KUBECTL = /root/benchmark-1348-deploy/bin/kubectl
 #### `up-volcano`
 
 - 将 Kueue、Coscheduling 和 YuniKorn 相关 Deployment 缩容到 0
-- 将 Volcano Scheduler、Controller 和 Admission 恢复到 1
-- 重启 Volcano Scheduler、Controller 和 Admission
+- Agent 模式：将 Batch Scheduler、Controller 和 Admission 缩容到 0，将 Agent Scheduler 恢复到 1 并重启
+- Batch 模式：将 Agent Scheduler 缩容到 0，将 Batch Scheduler、Controller 和 Admission 恢复到 1 并重启
 - 等待非目标 Deployment 和 Pod 全部归零、目标新 Pod Ready 且旧 Pod 完全退出
-- 清理上次遗留的 Volcano 测试资源并确认零残留
+- 清理上次遗留的原生 Kubernetes Job、Volcano Job 和 Pod，并确认零残留
 
 #### `up-yunikorn`
 
-- 将 Volcano、Kueue 和 Coscheduling 相关 Deployment 缩容到 0
+- 将两套 Volcano Scheduler、Volcano Controller、Admission、Kueue 和 Coscheduling 相关 Deployment 缩容到 0
 - 将 YuniKorn Scheduler 和 Admission 设置为 1，并保留 ConfigMap
 - 重启 YuniKorn Scheduler 和 Admission
 - 等待非目标 Deployment 和 Pod 全部归零、目标新 Pod Ready 且旧 Pod 完全退出
@@ -197,9 +247,8 @@ KUBECTL = /root/benchmark-1348-deploy/bin/kubectl
 
 #### Volcano
 
-- `volcano-scheduler`
-- `volcano-controllers`
-- `volcano-admission`
+- Agent 模式只等待 `volcano-agent-scheduler`，并确认 `volcano-scheduler`、`volcano-controllers` 和 `volcano-admission` 均为 0
+- Batch 模式等待 `volcano-scheduler`、`volcano-controllers` 和 `volcano-admission`，并确认 `volcano-agent-scheduler` 为 0
 
 #### YuniKorn
 
@@ -212,7 +261,7 @@ KUBECTL = /root/benchmark-1348-deploy/bin/kubectl
 
 继续执行现有 `TestInit`，但统一使用常驻集群 kubeconfig。
 
-`TestInit` 只负责创建或更新本轮实验配置。Volcano 和 YuniKorn ConfigMap 不存在时创建、内容变化时原地更新并重启对应 Scheduler；内容一致时跳过更新和重启：
+`TestInit` 只负责创建或更新本轮实验配置。Volcano 和 YuniKorn ConfigMap 不存在时创建、内容变化时原地更新并重启对应 Scheduler；内容一致时跳过更新和重启。Volcano 继续复用现有 `init.yaml`，ConfigMap 内容变化时根据 `VOLCANO_MODE` 重启本轮 Agent 或 Batch Scheduler：
 
 - Kueue：ResourceFlavor、WorkloadPriorityClass、ClusterQueue、LocalQueue
 - Volcano：Scheduler ConfigMap、`benchmark-root`、子 Queue、PriorityClass
@@ -254,7 +303,7 @@ KUBECTL = /root/benchmark-1348-deploy/bin/kubectl
 /root/benchmark-1348-deploy/kubeconfig
 ```
 
-测试参数继续由 Makefile 传入，Job 只创建在对应测试命名空间。
+测试参数继续由 Makefile 传入，Job 只创建在对应测试命名空间。Volcano Agent 模式读取独立的 `agent_job.yaml` 并创建 `batch/v1` Job，Batch 模式继续读取 `batch_job.yaml` 并创建 `batch.volcano.sh/v1alpha1` Job。
 
 ### 4.9 `end-<scheduler>`
 
@@ -279,12 +328,12 @@ KUBECTL = /root/benchmark-1348-deploy/bin/kubectl
 
 #### `down-volcano`
 
-- 使用 `kubectl delete --wait=false` 异步提交 `bench-volcano` 中 Volcano Job 和 Pod 的删除请求
+- 使用 `kubectl delete --wait=false` 异步提交 `bench-volcano` 中原生 Kubernetes Job、Volcano Job 和 Pod 的删除请求
 - 等待并确认上述命名空间资源全部归零
 - 删除测试创建的子 Queue、`benchmark-root` 和 PriorityClass
 - 对命名空间和集群级测试资源执行最终零残留断言
 - 保留 `TestInit` 原地更新后的 Volcano Scheduler ConfigMap
-- 将全部调度相关 Deployment 设置为 `1` 副本并等待 Ready
+- 将包括 Agent 和 Batch 在内的全部调度相关 Deployment 设置为 `1` 副本并等待 Ready
 
 #### `down-yunikorn`
 
@@ -298,7 +347,7 @@ KUBECTL = /root/benchmark-1348-deploy/bin/kubectl
 
 将顶层 `down` 改为固定副本基线收敛入口：
 
-- 将全部调度组件和 Audit Exporter 设置为 `1` 副本
+- 将全部调度组件和 Audit Exporter 设置为 `1` 副本，其中两套 Volcano Scheduler 均恢复到 1
 - 依次执行三套调度器资源清理
 - 不恢复或删除调度器 ConfigMap，不修改 Audit Exporter 当前标签
 - 等待全部组件 Ready
@@ -353,6 +402,7 @@ make down
 
 - 完整运行三个调度器时，等待 Grafana Sidecar 加载本轮相对 Dashboard，并尝试保存其中的 `Job Submission — Created vs Scheduled` 面板；截图失败只告警，不改变测试结果
 - 保存 `envs.txt` 和完整串行实验的 `result-window.txt`
+- 在 `envs.txt` 中记录解析后的实际 `VOLCANO_MODE`，而不是 `auto`
 - 将单张图片和结果元数据写入独立 staging 目录后原子归档，不移动整个 `./tmp`
 
 单调度器运行不调用 `save-result`，因此不会替换已有的完整场景目录。
@@ -368,7 +418,7 @@ make down
 
 `start-<scheduler>` 和 `end-<scheduler>` 同时记录审计文件 inode 与字节位置。inode 相同时，报告脚本读取同一文件的起止字节区间；测试期间发生一次 kube-apiserver 审计日志轮转时，脚本按起始 inode 找到已轮转文件，拼接旧文件尾部与新文件头部后统一解析。因此正常的单次轮转不会再导致报告保存失败。
 
-结果写入 `results/scenario-<n>/<scheduler>`。完整场景运行保存三个调度器目录；单调度器运行只原子替换本轮调度器目录，不修改同场景的其他结果。
+结果写入 `results/scenario-<n>/<scheduler>`。Agent 和 Batch 均写入 `results/scenario-<n>/volcano`，场景 1～4 默认表示 Agent、场景 5～8 默认表示 Batch。完整场景运行保存三个调度器目录；单调度器运行只原子替换本轮调度器目录，不修改同场景的其他结果。
 
 ## 5. Go 测试方案细节
 
@@ -390,6 +440,11 @@ make down
 
 `RestartDeployment` 使用 Pod template annotation 触发真实 rollout，并等待 generation 和 updated/ready/available replicas 全部收敛；原副本数为 0 时直接保持停用状态。
 
+Volcano Provider 根据解析后的 `VOLCANO_MODE` 选择 Job 类型和完成条件：
+
+- Agent：创建原生 `batch/v1` Job，等待每个 Job 出现 `Complete=True`
+- Batch：创建 `batch.volcano.sh/v1alpha1` Job，继续等待 `status.state.phase=Completed`
+
 ## 6. Kueue 测试资源方案细节
 
 - 测试资源使用 `kueue.x-k8s.io/v1beta2` API。
@@ -398,17 +453,31 @@ make down
 
 ## 7. Volcano 测试资源方案细节
 
-### 7.1 专用父队列
+### 7.1 模式选择
+
+`volcano` 继续作为三调度器对比中的逻辑名称。场景 1～4 默认使用原生 Kubernetes Job 和 Agent Scheduler；场景 5～8 默认使用 VCJob 和 Batch Scheduler。两种模式使用相同的 Job 数、每 Job Pod 数、资源请求、PriorityClass、KWOK NodeSelector、Toleration 和完成延迟，只改变 Job Controller 路径和实际 Scheduler。
+
+Agent 模式的原生 Job 使用 `parallelism` 和 `completions` 表达每 Job Pod 数，Pod 模板固定 `schedulerName=agent-scheduler`。Agent 不提供 Gang、Queue、Capacity 或 Batch Session 语义，因此只用于非 Gang 的场景 1～4。
+
+### 7.2 专用父队列
 
 不修改内置 `root` Queue。测试统一创建 `benchmark-root` 作为 `root` 的可回收子队列，将全部测试队列共享的 CPU 和内存总上限设置在该队列，并让所有 `test-queue-*` 以 `benchmark-root` 为父队列。
 
-### 7.2 Scheduler 配置
+### 7.3 Batch Scheduler 配置
 
 - 固定 Actions：`enqueue`、`allocate`、`backfill`、`reclaim`
 - 固定 Plugins：第一层使用 `priority`，第二层使用 `predicates` 和 `capacity`；`capacity.enableHierarchy` 固定为 `true`
 - Gang 场景在第一层增加 `gang`，并设置 `enablePreemptable: false`
 - Preemption 场景在 Actions 中增加 `preempt`
 - 仅在内容变化时原地更新 `volcano-scheduler-configmap` 并重启 Scheduler；内容一致时不操作
+
+### 7.4 Agent Scheduler 配置
+
+- 固定 Action：`allocate`
+- 固定 Plugins：`predicates` 和 `nodeorder`
+- 固定 `schedulerName=agent-scheduler`、Scheduler Worker 数 `1`
+- 使用事件驱动队列，不设置 `schedule-period`
+- 不启用 Sharding，使用全部 KWOK Node；Batch Scheduler 在 Agent 测试期间为 0，不存在节点争用
 
 ## 8. YuniKorn 测试资源方案细节
 
@@ -421,7 +490,7 @@ make down
 
 每个场景的三套调度方案测试完成并生成相对 Dashboard 后，等待 Grafana API 返回与本轮一致的时间窗，再通过 `127.0.0.1:8080/grafana` 渲染相对 Dashboard。结果图片统一截取顶部场景说明和 `Job Submission — Created vs Scheduled` 两个面板，并保留固定的上下留白。原 `perf` Dashboard 继续在 Grafana 中展示，但不作为结果图片来源。
 
-完整测试结果目录固定为 `results/scenario-1` 至 `results/scenario-8`，每个目录直接保存一张 `job-submission.png`、本轮的 `envs.txt` 和 `result-window.txt`，以及 `kueue`、`volcano`、`yunikorn` 三个调度器子目录。每个调度器子目录保存 `window.txt` 和 `report.txt`。完整场景制品先写入独立 staging 目录后原子替换；单调度器运行只原子替换对应调度器子目录，不覆盖完整对比结果。完整 `make` 最终生成 8 个场景目录、8 张图片和 24 组调度器报告；图片渲染失败只记录警告，不影响元数据和结果目录归档。
+完整测试结果目录固定为 `results/scenario-1` 至 `results/scenario-8`，每个目录直接保存一张 `job-submission.png`、本轮的 `envs.txt` 和 `result-window.txt`，以及 `kueue`、`volcano`、`yunikorn` 三个调度器子目录。每个调度器子目录保存 `window.txt` 和 `report.txt`。`envs.txt` 中的 `VOLCANO_MODE` 标明 `volcano` 子目录实际使用 Agent 还是 Batch。完整场景制品先写入独立 staging 目录后原子替换；单调度器运行只原子替换对应调度器子目录，不覆盖完整对比结果。完整 `make` 最终生成 8 个场景目录、8 张图片和 24 组调度器报告；图片渲染失败只记录警告，不影响元数据和结果目录归档。
 
 ### 9.2 八个相对时间 Dashboard 模板
 
@@ -471,7 +540,7 @@ Audit Exporter 的 ServiceMonitor 抓取间隔和超时均为 `100ms`，并保�
 → Pod 创建完成，进入 Pending/等待调度状态
 ```
 
-### 原生job + vc+scheduler创建pod流程：
+### 原生job + vc-scheduler创建pod流程：
 
 原生 Kubernetes Job 使用 Volcano Scheduler，最基本、最常用的是在 Pod 模板中指定volcano调度器
 
@@ -494,7 +563,7 @@ Volcano 的 PodGroup Controller 会发现这些 Pod，并自动创建 PodGroup�
 → Volcano Scheduler 将 PodGroup 设置为 Inqueue，并对组内 Pod执行调度和 Binding
 ```
 
-**使用vcjob和使用schedulerName=volcano的原声job哪个创建pod的速度更快呢？**
+**使用vcjob和使用原生job+vc-scheduler哪个创建pod的速度更快呢？**
 
 1. 大量 Job、每个 Job 只有 1 个 Pod：原生 Job + `schedulerName: volcano` 通常创建更快。它不需要等待 PodGroup 先进入 `Inqueue`，Job Controller 可以直接创建 Pod。
 
@@ -527,6 +596,25 @@ Volcano 的 PodGroup Controller 会发现这些 Pod，并自动创建 PodGroup�
 → Pod 创建完成，进入 Pending/等待调度状态
 ```
 
+### 原生job + agent-scheduler创建并调度pod流程：
+
+AgentScheduler 本身不需要 PodGroup。它采用类似原生 kube-scheduler 的逐 Pod 调度模型，Pod 由 Kubernetes Job Controller 创建，AgentScheduler 负责逐 Pod 调度。
+
+```
+提交 Pod 模板中指定 schedulerName=agent-scheduler 的原生 batch/v1 Job
+→ kube-apiserver
+→ Admission（内置准入及已注册的 Webhook）
+→ 写入 etcd → kube-controller-manager 的 Job Controller 通过 Informer 发现 Job
+→ Job Controller 分批/并发调用 kube-apiserver CREATE Pod
+→ Pod Admission
+→ 写入 etcd
+→ Pod 创建完成，进入 Pending/等待调度状态
+→ AgentScheduler 通过 Pod Informer 发现未调度 Pod并加入调度队列
+→ AgentScheduler Worker 从队列取出 Pod，执行节点过滤和打分
+→ AgentScheduler 选择节点并通过 kube-apiserver Binding
+→ Binding 写入 etcd，Pod 完成调度
+```
+
 ## 3. volcano调度周期
 
 Volcano 一轮调度的核心范围是：
@@ -550,6 +638,8 @@ wait.Until(pc.runOnce, pc.schedulePeriod, stopCh)
 → 等待1秒
 → 下一轮开始
 ```
+
+常驻测试中的 Batch Scheduler 将 `schedule-period` 固定为 `200ms`。Agent Scheduler 不使用该循环，它在 Pod 进入调度队列后由 Worker 事件驱动执行调度，因此不设置对应间隔。
 
 ## 4. Volcano Controller分别创建Kubernetes Client和Volcano Client
 

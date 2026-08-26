@@ -200,7 +200,7 @@ Kueue、Scheduler Plugins 和 kube-prometheus-stack 的期望 SHA-256 已写入 
 
 ### 具体安装路径
 
-- Volcano：`helm upgrade --install` 使用本地 `volcano-1.15.1.tgz` 和 `values/volcano.yaml`；安装脚本随后为 Admission 补齐 chart 未暴露的 API client QPS/Burst 参数，并核对三个 Deployment 的统一资源基线。
+- Volcano：`helm upgrade --install` 使用本地 `volcano-1.15.1.tgz` 和 `values/volcano.yaml`；安装脚本同时启用 Agent Scheduler，随后为 Admission 补齐 chart 未暴露的 API client QPS/Burst 参数，并核对四个 Deployment 的统一资源基线。
 - Kueue：本地 `kueue-v0.19.0.yaml` 使用带字段接管的 `kubectl apply --server-side --force-conflicts`；随后应用本地 `kueue-manager-config.yaml`，以 JSON Patch 覆盖官方 manifest 的资源配置，重启 Controller，并运行 Webhook 作用域修正脚本。字段接管用于保证资源覆盖后的重复安装不会因 field manager 冲突而中止。
 - Coscheduling：本地 source tarball 解压后，先 server-side apply `manifests/coscheduling/crd.yaml` 和 `config/crd/bases/scheduling.x-k8s.io_elasticquotas.yaml`，再从 `manifests/install/charts/as-a-second-scheduler` 进行 Helm 安装；最后用本地 ConfigMap 覆盖 scheduler 配置，为 Controller 补齐 QPS/Burst/Workers 参数并重启。
 - YuniKorn：`helm upgrade --install` 使用本地 `yunikorn-1.9.0.tgz` 和 `values/yunikorn.yaml`；由于 1.9.0 chart 强制渲染内存字段和 Go 内存环境变量，安装脚本随后以 JSON Patch 精确恢复 CPU-only 资源基线并移除 `GOMEMLIMIT`、`GOGC`，再把 Mutating Webhook 限定到 `bench-yunikorn` 标签、Validating Webhook 限定到 `yunikorn` 命名空间。
@@ -211,16 +211,17 @@ Kueue、Scheduler Plugins 和 kube-prometheus-stack 的期望 SHA-256 已写入 
 
 ### Volcano
 
-- Scheduler 名称：`volcano`
+- Batch Scheduler 名称：`volcano`
+- Agent Scheduler 名称：`agent-scheduler`
 - Helm release：`volcano`，chart `volcano-1.15.1`
-- 常驻 Deployment：`volcano-scheduler`、`volcano-controllers`、`volcano-admission`，各 `1` 副本
-- Agent Scheduler：关闭
+- 常驻 Deployment：`volcano-scheduler`、`volcano-agent-scheduler`、`volcano-controllers`、`volcano-admission`，各 `1` 副本
+- Agent Scheduler 镜像：`volcanosh/vc-agent-scheduler:v1.15.1`；Scheduler Worker 为 `1`，采用事件驱动调度，不设置 Batch Scheduler 的 `schedule-period`
 - Sharding Controller：关闭
 - Webhook 目标命名空间标签：`benchmark.scheduling/base=volcano`
 - 安装后空闲配置：actions 为 `enqueue, allocate, backfill`；第一层为 `priority/gang/conformance`，第二层为 `overcommit/drf/predicates/proportion/nodeorder/binpack`
 - 首次测试前为安装空闲配置；`TestInit` 仅在内容变化时将同一 ConfigMap 原地更新为 `enqueue, allocate, backfill, reclaim`，第一层为 `priority/gang`、第二层为 `predicates/capacity`，以支持 `benchmark-root` 层级队列，并仅在更新后重启 Scheduler；实验结束和 `make down` 均保留最近一次测试配置
 - Volcano Job CRD：`jobs.batch.volcano.sh/v1alpha1`，served/storage 均为 true
-- Scheduler、Controller、Admission API client QPS/Burst 均为 `1000/1000`
+- Batch Scheduler、Agent Scheduler、Controller、Admission API client QPS/Burst 均为 `1000/1000`
 - Controller 的 Job、GC、PodGroup worker 均为 `100`
 
 资源配置：
@@ -228,6 +229,7 @@ Kueue、Scheduler Plugins 和 kube-prometheus-stack 的期望 SHA-256 已写入 
 | Deployment | Requests | Limits |
 |---|---|---|
 | volcano-scheduler | `500m CPU` | `8 CPU` |
+| volcano-agent-scheduler | `500m CPU` | `8 CPU` |
 | volcano-controllers | `500m CPU` | `8 CPU` |
 | volcano-admission | `500m CPU` | `8 CPU` |
 
@@ -305,7 +307,7 @@ Kueue、Scheduler Plugins 和 kube-prometheus-stack 的期望 SHA-256 已写入 
 | `bench-kueue` | `benchmark.scheduling/base=kueue` | Kueue + Coscheduling |
 | `bench-yunikorn` | `benchmark.scheduling/base=yunikorn` | YuniKorn |
 
-空闲副本基线下三套 Scheduler Deployment 都是 `1` 副本并同时运行。仓库常驻集群流程不再保存测试前状态；每轮仅保留目标调度组件为 `1` 副本、将其他调度组件缩容为 `0`，等待非目标 Pod 完全退出后再开始测试。Kueue 命名空间资源使用异步删除并在最多 600 秒内确认归零，再删除集群级测试资源；Volcano 和 YuniKorn ConfigMap 由 `TestInit` 原地更新并保留。每轮结束以及人工执行 `make down` 时，8 个调度组件都统一收敛到 `1` 副本。
+空闲副本基线下 Coscheduling、Volcano Batch、Volcano Agent 和 YuniKorn 四个 Scheduler Deployment 都是 `1` 副本并同时运行。仓库常驻集群流程不再保存测试前状态；每轮仅保留目标调度组件为 `1` 副本、将其他调度组件缩容为 `0`，等待非目标 Pod 完全退出后再开始测试。Volcano Agent 模式只保留 Agent Scheduler，Batch Scheduler、Controller 和 Admission 均缩容为 `0`；Batch 模式保持原有三组件。Kueue 命名空间资源使用异步删除并在最多 600 秒内确认归零，再删除集群级测试资源；Volcano 和 YuniKorn ConfigMap 由 `TestInit` 原地更新并保留。每轮结束以及人工执行 `make down` 时，9 个调度组件都统一收敛到 `1` 副本。
 
 ## 10. 监控与审计
 
@@ -394,6 +396,7 @@ Exporter 自 `v0.0.28` 起每 `100ms` 轮询一次审计文件，与 ServiceMoni
 | Kind Node | `kindest/node:v1.34.8` | `sha256:02722c2dedddcfc00febf5d27fbeb9b7b2c14294c82109ff4a85d89ac9ba3256` |
 | KWOK | `registry.k8s.io/kwok/kwok:v0.7.0` | `sha256:2bb52d4cdd8b3e22e53ec86643a02ee84abdd8cec825269acdf7706d54c0ad6e` |
 | Volcano Scheduler | `volcanosh/vc-scheduler:v1.15.1` | `sha256:e79dc85279b5fd2c5e431571b4683f819ff0dfeacdf230fca49e6ce1f4509ae1` |
+| Volcano Agent Scheduler | `volcanosh/vc-agent-scheduler:v1.15.1` | `sha256:a2920ca3503fc0bf6b1caafc32ae69afdea20fd20e71fd6a1d2cd00385c34ab8` |
 | Volcano Controller | `volcanosh/vc-controller-manager:v1.15.1` | `sha256:555245dd5c73524dee627ad0c2e308c9dd95af234df791d11e6bcdfa2f33a4ef` |
 | Volcano Webhook | `volcanosh/vc-webhook-manager:v1.15.1` | `sha256:569e3671b6d9619c175062e6d3e82bfe3bb4bc3628b36347406ccc07f10fe12c` |
 | Kueue | `registry.k8s.io/kueue/kueue:v0.19.0` | `sha256:6fe2cbe4c7799eed1a8d49898c38b8bd73f1572df1825d7cf266ec9e2af70bec` |
@@ -519,7 +522,7 @@ PNG 签名和 HTTP 200 都不能排除面板显示 `No data`。完整实验验�
 |---|---|
 | `versions.env` | `9802258aa7437b303934ab306442f5f48d4ba7466802ff93ed0371a8932c7305` |
 | `kind-config.yaml` | `bb5e52c0339cd90862baaea9f404b7994afa224e17a3f505b2e888cf4c848286` |
-| `values/volcano.yaml` | `e2bbd980356f744873887498bcc50da99d5a7ee6d2abbbfade6c135078271316` |
+| `values/volcano.yaml` | `1b8e8b6266a0ea642278176b1db7bb7b4b87eb0280787030d683db371dcd54e7` |
 | `values/coscheduling.yaml` | `3bc034780c3681265dd399556abf80ff8b09817c301c3a116b183e2fb3443920` |
 | `values/yunikorn.yaml` | `a2955429e78d203c17a9b4c21de03ab1aa04a055a57989d16fcba9d7eacb1856` |
 | `values/monitoring.yaml` | `9e1851bb5538b05bb7380be878857b22c13d3acc0f688af3bad49f5320c48bf6` |
@@ -529,24 +532,24 @@ PNG 签名和 HTTP 200 都不能排除面板显示 `No data`。完整实验验�
 | `manifests/audit-exporter.yaml` | `a29f2e4cfa796109942f3e4725c3eee02c5a81f912c9357a751bbe8b8bf3cf75` |
 | `manifests/audit-dashboard.yaml` | `558dfb641b07815b1dba8467a7939516be88ce3b07016f448d08e775c81d82fb` |
 | `manifests/perf-dashboard.json` | `df66405f2b9be9166cb1ed09cf9bf9ffc1e191deb6a2811fcf272cc5aaac188b` |
-| `manifests/scheduler-smoke-tests.yaml` | `8574169b65bd048ed085c344bdbf6650cae18773c44001a7bef1bfc0acd8aa45` |
+| `manifests/scheduler-smoke-tests.yaml` | `cf8c73046330d8a378a5f3e8d665dc939ea40ed8a7ba1a33011feaddf8158c91` |
 | `manifests/kwok-configuration.yaml` | `b3dc786a606315c8d830433905aa7197423fdec6ba14257f6af8ee2677997cbb` |
 | `scripts/create-canary-cluster.sh` | `796c7aee3595252d492d937a6ebb76c7f6fd609806a419aae746c7b42c14ce03` |
 | `scripts/configure-control-plane-baseline.sh` | `8e533ca29ef7b45751fa5c178f04cf088ae55f74d878b17907e6d1c2831d7a47` |
 | `scripts/install-kwok-canary.sh` | `66d2f279820b110711f2975b8af9502d06a38c761e98f82d92ce8d90516ebcb6` |
 | `scripts/prepare-scheduler-artifacts.sh` | `ef0fc3f6d828d9e98c0cc8dcbe4ff1dfbb6a603ba62ec93a3c2feee7c1f574c1` |
-| `scripts/install-schedulers.sh` | `d974402272616e26f95f3396525a9e35197df59e4f60fe224f47cd812bc08438` |
+| `scripts/install-schedulers.sh` | `3804af625db9aade01ed966c3235c1d7f4982d10f37d6c2ff529bb6e25b83a92` |
 | `scripts/scope-kueue-webhooks.sh` | `f3be442a47f5992e78b37b0b4c2f4dac672cc79fc683f44cb206c9e44a96acdc` |
 | `scripts/scope-yunikorn-webhooks.sh` | `251569cb2fbcd8072141e04e3b1592e6702e85429fd95e179da4e6f282ab1c22` |
 | `scripts/prepare-monitoring-artifacts.sh` | `04bdaafab302f228bc7c1d843531db0059dbadca3b7effda3a9e576704caf020` |
 | `scripts/install-monitoring.sh` | `c05b6909f00556bd2f26810f899fe69236a9edeec9b20e19ba78ed11ff495994` |
 | `scripts/scale-kwok-nodes.sh` | `6d4bfdf53b644f04d661c55698caad4b9303824752a2859ae5c235fc54e8960c` |
-| `scripts/run-scheduler-smoke-tests.sh` | `e1258ff299dc28162c59ba507365d234308e6344e42449d9582c16e89959d6cb` |
+| `scripts/run-scheduler-smoke-tests.sh` | `912a17c358691e41050b68cef6c43dcad3280e8d4a68168789616f57c2d5bf3e` |
 | `scripts/verify-base.sh` | `af35c07b047896d6d0109324080bf5132f6b1a96b57429ca9dac7fdb037f7fcd` |
-| `scripts/verify-schedulers.sh` | `01d2beb821119b578c71fe1776b3aa8e654b4a8f3f8be1a8a6f45569415a3fb2` |
+| `scripts/verify-schedulers.sh` | `fc87ad28e998bb09d0aafe09a703cced8bc035ebb22fd04005a452c105d0e582` |
 | `scripts/verify-monitoring.sh` | `a13c5acea6793d15de610420e4ed14f43c06771c8824029d3b62e63adbbc2e1d` |
 | `systemd/benchmark-grafana-port-forward.service` | `23952b1b52fd95bdaab07f91abf1b695a97a52ef99a95dce5a0a27ba84a94ec1` |
-| `deployed-image-lock.md` | `11c3337ca068b1eb1ec3b3482e09d7c926960a2cd8372d59be7e6e40333492cc` |
+| `deployed-image-lock.md` | `3a98f6b9d6f633d863fcafd6e2f47b6099169fc25ce223f2a9e12a653ba8fdd1` |
 
 Grafana Ingress 的版本化部署源位于仓库，当前文件指纹如下：
 
@@ -676,3 +679,11 @@ Grafana Ingress 的版本化部署源位于仓库，当前文件指纹如下：
 - 修复镜像以官方 `v0.34.7` tag（commit `8283b14`）为基线，仅应用上游修复 commit `4cd26c4899db13133e414322d9f208ffaf7904e7`，依赖仍为 `client-go v0.34.7` 和 `controller-runtime v0.22.3`。
 - Controller 实际参数为 `--qps=1000 --burst=1000 --workers=100`，运行镜像摘要为 `sha256:17ac1ef07eb0fb0dc953e9b60bc0e07ac2744118a3d40adca61bc7f83dca1070`。
 - 更新后 `verify-base.sh 1000` 和 `verify-schedulers.sh` 均通过；`1001/1001` Node Ready，全部调度器 Deployment 正常。本次只完成基线部署验证，尚未使用新基线重跑八场景完整性能测试。
+
+## 27. 2026-08-26 Volcano Agent Scheduler 部署与模式切换
+
+- Volcano release 从 revision `4` 升级到 `5`，新增 `volcano-agent-scheduler` Deployment；镜像为 `volcanosh/vc-agent-scheduler:v1.15.1`，运行摘要为 `sha256:a2920ca3503fc0bf6b1caafc32ae69afdea20fd20e71fd6a1d2cd00385c34ab8`。
+- Agent Scheduler 固定 `schedulerName=agent-scheduler`、Scheduler Worker `1`、Node Worker `20`、Kubernetes API QPS/Burst `1000/1000` 和 CPU `500m/8`。Agent 使用事件驱动队列，不设置 Batch Scheduler 的 `schedule-period`。
+- 仓库新增 `VOLCANO_MODE=auto|agent|batch`。`auto` 将场景 1～4 解析为 Agent、场景 5～8 解析为 Batch；Agent 模式拒绝 `GANG=true`。Agent 使用独立原生 `batch/v1` Job 模板，Batch 继续使用 VCJob。
+- 实际切换验证通过：进入 Agent 模式后仅 `volcano-agent-scheduler` 为 `1/1`，Batch Scheduler、Controller 和 Admission 均为 `0`；退出后 9 个调度组件全部恢复到空闲 `1` 副本基线，`1001/1001` Node Ready。
+- Agent 原生 Job 和既有 Volcano VCJob 的调度冒烟均通过。完整冒烟脚本随后在既有 YuniKorn 检查处停止：当前测试 ConfigMap 仅有 `root.sandbox`，而部署冒烟资源仍指定初装队列 `root.default`；该问题与 Agent 部署无关，本次未运行 benchmark，也未改动 YuniKorn 配置。

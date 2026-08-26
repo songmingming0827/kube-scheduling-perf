@@ -97,10 +97,12 @@ helm upgrade --install volcano "${DOWNLOAD_DIR}/volcano-${VOLCANO_VERSION#v}.tgz
   --values "${DEPLOY_DIR}/values/volcano.yaml" \
   --wait --timeout 10m
 patch_cpu_baseline volcano-system volcano-scheduler volcano-scheduler
+patch_cpu_baseline volcano-system volcano-agent-scheduler volcano-agent-scheduler
 patch_cpu_baseline volcano-system volcano-controllers volcano-controllers
 patch_cpu_baseline volcano-system volcano-admission admission
 patch_volcano_admission_args
 "${KUBECTL}" rollout status deployment/volcano-scheduler --namespace volcano-system --timeout=10m
+"${KUBECTL}" rollout status deployment/volcano-agent-scheduler --namespace volcano-system --timeout=10m
 "${KUBECTL}" rollout status deployment/volcano-controllers --namespace volcano-system --timeout=10m
 "${KUBECTL}" rollout status deployment/volcano-admission --namespace volcano-system --timeout=10m
 

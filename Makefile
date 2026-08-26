@@ -28,10 +28,13 @@ MEMORY_LENDING_LIMIT ?=
 
 GANG ?= false
 PREEMPTION ?= false
+VOLCANO_MODE ?= auto
 
 COMPARISON_SCHEDULERS := kueue volcano yunikorn
 SCHEDULERS ?= $(COMPARISON_SCHEDULERS)
 RELATIVE_DASHBOARD_SCENARIO ?=
+DEFAULT_VOLCANO_MODE = $(if $(filter 1 2 3 4,$(RELATIVE_DASHBOARD_SCENARIO)),agent,batch)
+EFFECTIVE_VOLCANO_MODE = $(if $(filter auto,$(VOLCANO_MODE)),$(DEFAULT_VOLCANO_MODE),$(VOLCANO_MODE))
 PROMETHEUS_URL ?= http://127.0.0.1:31003
 
 KIND_CLUSTER_NAME ?= volcano-benchmark-1348
@@ -72,7 +75,8 @@ TEST_ENVS = \
 		CPU_REQUEST_PER_POD=$(CPU_REQUEST_PER_POD) \
 		MEMORY_REQUEST_PER_POD=$(MEMORY_REQUEST_PER_POD) \
 		PREEMPTION=$(PREEMPTION) \
-		GANG=$(GANG)
+		GANG=$(GANG) \
+		VOLCANO_MODE=$(EFFECTIVE_VOLCANO_MODE)
 
 .PHONY: default
 default: ensure-directories
@@ -195,11 +199,11 @@ bin/test-$(1): $(shell find ./test/utils ./test/$(1) -type f)
 
 .PHONY: test-init-$(1)
 test-init-$(1): bin/test-$(1)
-	KUBECONFIG=$(KUBECONFIG) ./bin/test-$(1) -test.timeout $(TEST_TIMEOUT_SECONDS)s -test.run '^TestInit' -test.v
+	VOLCANO_MODE=$(EFFECTIVE_VOLCANO_MODE) KUBECONFIG=$(KUBECONFIG) ./bin/test-$(1) -test.timeout $(TEST_TIMEOUT_SECONDS)s -test.run '^TestInit' -test.v
 
 .PHONY: test-batch-job-$(1)
 test-batch-job-$(1):
-	KUBECONFIG=$(KUBECONFIG) ./bin/test-$(1) -test.timeout $(TEST_TIMEOUT_SECONDS)s -test.run '^TestBatchJob' -test.v
+	VOLCANO_MODE=$(EFFECTIVE_VOLCANO_MODE) KUBECONFIG=$(KUBECONFIG) ./bin/test-$(1) -test.timeout $(TEST_TIMEOUT_SECONDS)s -test.run '^TestBatchJob' -test.v
 
 .PHONY: reset-auditlog-$(1)
 reset-auditlog-$(1):
@@ -314,6 +318,7 @@ wait-no-kueue-namespaced-resources:
 
 .PHONY: cleanup-volcano-resources
 cleanup-volcano-resources:
+	$(KUBECTL_CMD) delete jobs.batch --all -n bench-volcano --ignore-not-found --wait=false
 	$(KUBECTL_CMD) delete jobs.batch.volcano.sh --all -n bench-volcano --ignore-not-found --wait=false
 	$(KUBECTL_CMD) delete pods --all -n bench-volcano --ignore-not-found --force --grace-period=0 --wait=false
 	@set -eu; \
@@ -352,7 +357,7 @@ assert-no-kueue-resources:
 assert-no-volcano-resources:
 	@set -eu; \
 		for attempt in $$(seq 1 300); do \
-			namespaced="$$( $(KUBECTL_CMD) get jobs.batch.volcano.sh,pods -n bench-volcano -o name )"; \
+		namespaced="$$( $(KUBECTL_CMD) get jobs.batch,jobs.batch.volcano.sh,pods -n bench-volcano -o name )"; \
 			all_queues="$$( $(KUBECTL_CMD) get queues.scheduling.volcano.sh -o name )"; \
 			queues="$$(printf '%s\n' "$$all_queues" | sed -n -e '/\/benchmark-root$$/p' -e '/\/test-queue-/p')"; \
 			priorities=''; \
@@ -377,7 +382,7 @@ assert-no-yunikorn-resources:
 enable-all-schedulers:
 	$(KUBECTL_CMD) scale deployment -n kueue-system kueue-controller-manager --replicas=1
 	$(KUBECTL_CMD) scale deployment -n coscheduling coscheduling scheduler-plugins-controller --replicas=1
-	$(KUBECTL_CMD) scale deployment -n volcano-system volcano-scheduler volcano-controllers volcano-admission --replicas=1
+	$(KUBECTL_CMD) scale deployment -n volcano-system volcano-scheduler volcano-agent-scheduler volcano-controllers volcano-admission --replicas=1
 	$(KUBECTL_CMD) scale deployment -n yunikorn yunikorn-scheduler yunikorn-admission-controller --replicas=1
 
 .PHONY: ensure-audit-exporter-running
@@ -387,13 +392,13 @@ ensure-audit-exporter-running:
 
 .PHONY: activate-kueue
 activate-kueue:
-	$(KUBECTL_CMD) scale deployment -n volcano-system volcano-scheduler volcano-controllers volcano-admission --replicas=0
+	$(KUBECTL_CMD) scale deployment -n volcano-system volcano-scheduler volcano-agent-scheduler volcano-controllers volcano-admission --replicas=0
 	$(KUBECTL_CMD) scale deployment -n yunikorn yunikorn-scheduler yunikorn-admission-controller --replicas=0
 	$(KUBECTL_CMD) scale deployment -n kueue-system kueue-controller-manager --replicas=1
 	$(KUBECTL_CMD) scale deployment -n coscheduling coscheduling scheduler-plugins-controller --replicas=1
 	$(KUBECTL_CMD) rollout restart -n kueue-system deployment/kueue-controller-manager
 	$(KUBECTL_CMD) rollout restart -n coscheduling deployment/coscheduling deployment/scheduler-plugins-controller
-	$(MAKE) wait-deployment-replicas WAIT_DEPLOYMENTS='kueue-system/kueue-controller-manager=1 coscheduling/coscheduling=1 coscheduling/scheduler-plugins-controller=1 volcano-system/volcano-scheduler=0 volcano-system/volcano-controllers=0 volcano-system/volcano-admission=0 yunikorn/yunikorn-scheduler=0 yunikorn/yunikorn-admission-controller=0'
+	$(MAKE) wait-deployment-replicas WAIT_DEPLOYMENTS='kueue-system/kueue-controller-manager=1 coscheduling/coscheduling=1 coscheduling/scheduler-plugins-controller=1 volcano-system/volcano-scheduler=0 volcano-system/volcano-agent-scheduler=0 volcano-system/volcano-controllers=0 volcano-system/volcano-admission=0 yunikorn/yunikorn-scheduler=0 yunikorn/yunikorn-admission-controller=0'
 	$(MAKE) cleanup-kueue-resources
 
 .PHONY: activate-volcano
@@ -401,19 +406,26 @@ activate-volcano:
 	$(KUBECTL_CMD) scale deployment -n kueue-system kueue-controller-manager --replicas=0
 	$(KUBECTL_CMD) scale deployment -n coscheduling coscheduling scheduler-plugins-controller --replicas=0
 	$(KUBECTL_CMD) scale deployment -n yunikorn yunikorn-scheduler yunikorn-admission-controller --replicas=0
-	$(KUBECTL_CMD) scale deployment -n volcano-system volcano-scheduler volcano-controllers volcano-admission --replicas=1
-	$(KUBECTL_CMD) rollout restart -n volcano-system deployment/volcano-scheduler deployment/volcano-controllers deployment/volcano-admission
-	$(MAKE) wait-deployment-replicas WAIT_DEPLOYMENTS='kueue-system/kueue-controller-manager=0 coscheduling/coscheduling=0 coscheduling/scheduler-plugins-controller=0 volcano-system/volcano-scheduler=1 volcano-system/volcano-controllers=1 volcano-system/volcano-admission=1 yunikorn/yunikorn-scheduler=0 yunikorn/yunikorn-admission-controller=0'
+	@if test "$(EFFECTIVE_VOLCANO_MODE)" = agent; then \
+		$(KUBECTL_CMD) scale deployment -n volcano-system volcano-scheduler volcano-controllers volcano-admission --replicas=0; \
+		$(KUBECTL_CMD) scale deployment -n volcano-system volcano-agent-scheduler --replicas=1; \
+		$(KUBECTL_CMD) rollout restart -n volcano-system deployment/volcano-agent-scheduler; \
+	else \
+		$(KUBECTL_CMD) scale deployment -n volcano-system volcano-agent-scheduler --replicas=0; \
+		$(KUBECTL_CMD) scale deployment -n volcano-system volcano-scheduler volcano-controllers volcano-admission --replicas=1; \
+		$(KUBECTL_CMD) rollout restart -n volcano-system deployment/volcano-scheduler deployment/volcano-controllers deployment/volcano-admission; \
+	fi
+	$(MAKE) wait-deployment-replicas WAIT_DEPLOYMENTS='kueue-system/kueue-controller-manager=0 coscheduling/coscheduling=0 coscheduling/scheduler-plugins-controller=0 volcano-system/volcano-scheduler=$(if $(filter agent,$(EFFECTIVE_VOLCANO_MODE)),0,1) volcano-system/volcano-agent-scheduler=$(if $(filter agent,$(EFFECTIVE_VOLCANO_MODE)),1,0) volcano-system/volcano-controllers=$(if $(filter agent,$(EFFECTIVE_VOLCANO_MODE)),0,1) volcano-system/volcano-admission=$(if $(filter agent,$(EFFECTIVE_VOLCANO_MODE)),0,1) yunikorn/yunikorn-scheduler=0 yunikorn/yunikorn-admission-controller=0'
 	$(MAKE) cleanup-volcano-resources
 
 .PHONY: activate-yunikorn
 activate-yunikorn:
-	$(KUBECTL_CMD) scale deployment -n volcano-system volcano-scheduler volcano-controllers volcano-admission --replicas=0
+	$(KUBECTL_CMD) scale deployment -n volcano-system volcano-scheduler volcano-agent-scheduler volcano-controllers volcano-admission --replicas=0
 	$(KUBECTL_CMD) scale deployment -n kueue-system kueue-controller-manager --replicas=0
 	$(KUBECTL_CMD) scale deployment -n coscheduling coscheduling scheduler-plugins-controller --replicas=0
 	$(KUBECTL_CMD) scale deployment -n yunikorn yunikorn-scheduler yunikorn-admission-controller --replicas=1
 	$(KUBECTL_CMD) rollout restart -n yunikorn deployment/yunikorn-scheduler deployment/yunikorn-admission-controller
-	$(MAKE) wait-deployment-replicas WAIT_DEPLOYMENTS='kueue-system/kueue-controller-manager=0 coscheduling/coscheduling=0 coscheduling/scheduler-plugins-controller=0 volcano-system/volcano-scheduler=0 volcano-system/volcano-controllers=0 volcano-system/volcano-admission=0 yunikorn/yunikorn-scheduler=1 yunikorn/yunikorn-admission-controller=1'
+	$(MAKE) wait-deployment-replicas WAIT_DEPLOYMENTS='kueue-system/kueue-controller-manager=0 coscheduling/coscheduling=0 coscheduling/scheduler-plugins-controller=0 volcano-system/volcano-scheduler=0 volcano-system/volcano-agent-scheduler=0 volcano-system/volcano-controllers=0 volcano-system/volcano-admission=0 yunikorn/yunikorn-scheduler=1 yunikorn/yunikorn-admission-controller=1'
 	$(MAKE) cleanup-yunikorn-resources
 
 .PHONY: deactivate-kueue
@@ -436,22 +448,22 @@ deactivate-yunikorn:
 
 .PHONY: wait-resident-kueue
 wait-resident-kueue:
-	$(MAKE) wait-deployment-replicas WAIT_DEPLOYMENTS='kueue-system/kueue-controller-manager=1 coscheduling/coscheduling=1 coscheduling/scheduler-plugins-controller=1 volcano-system/volcano-scheduler=0 volcano-system/volcano-controllers=0 volcano-system/volcano-admission=0 yunikorn/yunikorn-scheduler=0 yunikorn/yunikorn-admission-controller=0'
+	$(MAKE) wait-deployment-replicas WAIT_DEPLOYMENTS='kueue-system/kueue-controller-manager=1 coscheduling/coscheduling=1 coscheduling/scheduler-plugins-controller=1 volcano-system/volcano-scheduler=0 volcano-system/volcano-agent-scheduler=0 volcano-system/volcano-controllers=0 volcano-system/volcano-admission=0 yunikorn/yunikorn-scheduler=0 yunikorn/yunikorn-admission-controller=0'
 	cd $(RESIDENT_DEPLOY_DIR) && ./scripts/verify-base.sh 1000
 
 .PHONY: wait-resident-volcano
 wait-resident-volcano:
-	$(MAKE) wait-deployment-replicas WAIT_DEPLOYMENTS='kueue-system/kueue-controller-manager=0 coscheduling/coscheduling=0 coscheduling/scheduler-plugins-controller=0 volcano-system/volcano-scheduler=1 volcano-system/volcano-controllers=1 volcano-system/volcano-admission=1 yunikorn/yunikorn-scheduler=0 yunikorn/yunikorn-admission-controller=0'
+	$(MAKE) wait-deployment-replicas WAIT_DEPLOYMENTS='kueue-system/kueue-controller-manager=0 coscheduling/coscheduling=0 coscheduling/scheduler-plugins-controller=0 volcano-system/volcano-scheduler=$(if $(filter agent,$(EFFECTIVE_VOLCANO_MODE)),0,1) volcano-system/volcano-agent-scheduler=$(if $(filter agent,$(EFFECTIVE_VOLCANO_MODE)),1,0) volcano-system/volcano-controllers=$(if $(filter agent,$(EFFECTIVE_VOLCANO_MODE)),0,1) volcano-system/volcano-admission=$(if $(filter agent,$(EFFECTIVE_VOLCANO_MODE)),0,1) yunikorn/yunikorn-scheduler=0 yunikorn/yunikorn-admission-controller=0'
 	cd $(RESIDENT_DEPLOY_DIR) && ./scripts/verify-base.sh 1000
 
 .PHONY: wait-resident-yunikorn
 wait-resident-yunikorn:
-	$(MAKE) wait-deployment-replicas WAIT_DEPLOYMENTS='kueue-system/kueue-controller-manager=0 coscheduling/coscheduling=0 coscheduling/scheduler-plugins-controller=0 volcano-system/volcano-scheduler=0 volcano-system/volcano-controllers=0 volcano-system/volcano-admission=0 yunikorn/yunikorn-scheduler=1 yunikorn/yunikorn-admission-controller=1'
+	$(MAKE) wait-deployment-replicas WAIT_DEPLOYMENTS='kueue-system/kueue-controller-manager=0 coscheduling/coscheduling=0 coscheduling/scheduler-plugins-controller=0 volcano-system/volcano-scheduler=0 volcano-system/volcano-agent-scheduler=0 volcano-system/volcano-controllers=0 volcano-system/volcano-admission=0 yunikorn/yunikorn-scheduler=1 yunikorn/yunikorn-admission-controller=1'
 	cd $(RESIDENT_DEPLOY_DIR) && ./scripts/verify-base.sh 1000
 
 .PHONY: wait-all-schedulers
 wait-all-schedulers:
-	$(MAKE) wait-deployment-replicas WAIT_DEPLOYMENTS='kueue-system/kueue-controller-manager=1 coscheduling/coscheduling=1 coscheduling/scheduler-plugins-controller=1 volcano-system/volcano-scheduler=1 volcano-system/volcano-controllers=1 volcano-system/volcano-admission=1 yunikorn/yunikorn-scheduler=1 yunikorn/yunikorn-admission-controller=1 $(AUDIT_EXPORTER_NAMESPACE)/$(AUDIT_EXPORTER_DEPLOYMENT)=1'
+	$(MAKE) wait-deployment-replicas WAIT_DEPLOYMENTS='kueue-system/kueue-controller-manager=1 coscheduling/coscheduling=1 coscheduling/scheduler-plugins-controller=1 volcano-system/volcano-scheduler=1 volcano-system/volcano-agent-scheduler=1 volcano-system/volcano-controllers=1 volcano-system/volcano-admission=1 yunikorn/yunikorn-scheduler=1 yunikorn/yunikorn-admission-controller=1 $(AUDIT_EXPORTER_NAMESPACE)/$(AUDIT_EXPORTER_DEPLOYMENT)=1'
 	cd $(RESIDENT_DEPLOY_DIR) && ./scripts/verify-base.sh 1000
 
 .PHONY: up
@@ -480,8 +492,19 @@ validate-result-scenario:
 		*) echo 'RELATIVE_DASHBOARD_SCENARIO must be an integer from 1 to 8' >&2; exit 1;; \
 	esac
 
+.PHONY: validate-volcano-mode
+validate-volcano-mode:
+	@case "$(VOLCANO_MODE)" in \
+		auto|agent|batch) ;; \
+		*) echo 'VOLCANO_MODE must be auto, agent, or batch' >&2; exit 1;; \
+	esac
+	@if printf ' %s ' "$(SCHEDULERS)" | grep -q ' volcano ' && \
+		test "$(EFFECTIVE_VOLCANO_MODE)" = agent && test "$(GANG)" = true; then \
+		echo 'VOLCANO_MODE=agent does not support GANG=true' >&2; exit 1; \
+	fi
+
 .PHONY: serial-test
-serial-test: validate-result-scenario ensure-directories
+serial-test: validate-result-scenario validate-volcano-mode ensure-directories
 	mkdir -p ./tmp
 	rm -f ./tmp/result-to-millis \
 		./tmp/relative-dashboard-from-millis ./tmp/relative-dashboard-to-millis \
