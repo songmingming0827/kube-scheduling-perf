@@ -38,7 +38,7 @@ jq -e '
   (.[0].spec.containers[0].command | index("--concurrent-job-syncs=100")) != null and
   (.[0].spec.containers[0].command | index("--kube-api-qps=1000")) != null and
   (.[0].spec.containers[0].command | index("--kube-api-burst=1000")) != null and
-  .[0].spec.containers[0].resources.requests.cpu == "1" and
+  .[0].spec.containers[0].resources.requests.cpu == "500m" and
   .[0].spec.containers[0].resources.limits.cpu == "8"
 ' <<<"${controller_manager_json}" >/dev/null
 jq -e '
@@ -46,7 +46,7 @@ jq -e '
   .[0].status.phase == "Running" and
   (.[0].spec.containers[0].command | index("--kube-api-qps=1000")) != null and
   (.[0].spec.containers[0].command | index("--kube-api-burst=1000")) != null and
-  .[0].spec.containers[0].resources.requests.cpu == "1" and
+  .[0].spec.containers[0].resources.requests.cpu == "500m" and
   .[0].spec.containers[0].resources.limits.cpu == "8"
 ' <<<"${scheduler_json}" >/dev/null
 
@@ -56,5 +56,5 @@ echo "server_version=${server_version}"
 echo "nodes=${ready_nodes}/${total_nodes}_Ready"
 echo "kwok_image=${kwok_image}"
 echo "audit_log=writing"
-echo "controller_manager_client=1000/1000 job_syncs=100 cpu=1/8"
-echo "default_scheduler_client=1000/1000 cpu=1/8"
+echo "controller_manager_client=1000/1000 job_syncs=100 cpu=500m/8"
+echo "default_scheduler_client=1000/1000 cpu=500m/8"

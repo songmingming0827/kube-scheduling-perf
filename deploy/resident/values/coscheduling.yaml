@@ -11,7 +11,7 @@ scheduler:
 
 controller:
   name: scheduler-plugins-controller
-  image: registry.k8s.io/scheduler-plugins/controller:v0.34.7
+  image: crpi-ldgaqlsrparac7fl.cn-hangzhou.personal.cr.aliyuncs.com/mingm/scheduler-plugins-controller:v0.34.7-qpsfix
   replicaCount: 1
   leaderElect: false
   resources:

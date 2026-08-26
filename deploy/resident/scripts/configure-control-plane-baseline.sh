@@ -37,9 +37,16 @@ ensure_cpu_baseline() {
   local manifest="$1"
   local original_request="$2"
 
+  if docker exec "${CONTROL_PLANE}" grep -q '^        cpu: 500m$' "${manifest}" &&
+     docker exec "${CONTROL_PLANE}" grep -q '^      limits:$' "${manifest}" &&
+     docker exec "${CONTROL_PLANE}" grep -q '^        cpu: 8$' "${manifest}"; then
+    return
+  fi
   if docker exec "${CONTROL_PLANE}" grep -q '^        cpu: 1$' "${manifest}" &&
      docker exec "${CONTROL_PLANE}" grep -q '^      limits:$' "${manifest}" &&
      docker exec "${CONTROL_PLANE}" grep -q '^        cpu: 8$' "${manifest}"; then
+    docker exec "${CONTROL_PLANE}" sed -i \
+      's/^        cpu: 1$/        cpu: 500m/' "${manifest}"
     return
   fi
   if ! docker exec "${CONTROL_PLANE}" grep -q "^        cpu: ${original_request}$" "${manifest}"; then
@@ -47,7 +54,7 @@ ensure_cpu_baseline() {
     return 1
   fi
   docker exec "${CONTROL_PLANE}" sed -i \
-    "s/^        cpu: ${original_request}$/        cpu: 1\\n      limits:\\n        cpu: 8/" \
+    "s/^        cpu: ${original_request}$/        cpu: 500m\\n      limits:\\n        cpu: 8/" \
     "${manifest}"
 }
 
@@ -109,5 +116,5 @@ if [[ "${new_scheduler_sha}" != "${scheduler_sha}" ]]; then
   wait_for_static_pod kube-scheduler "${scheduler_uid}"
 fi
 
-printf 'controller_manager_client=1000/1000 job_syncs=100 cpu=1/8\n'
-printf 'default_scheduler_client=1000/1000 cpu=1/8\n'
+printf 'controller_manager_client=1000/1000 job_syncs=100 cpu=500m/8\n'
+printf 'default_scheduler_client=1000/1000 cpu=500m/8\n'
