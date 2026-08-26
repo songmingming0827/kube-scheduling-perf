@@ -64,14 +64,6 @@ podplaystageparallelism配置设置详见附录
 
 非测试状态下两套 Scheduler、`volcano-controllers` 和 `volcano-admission` 均保持 `1` 副本。两套 Scheduler 只处理与自身 `schedulerName` 匹配的 Pod，不会争抢同一个待调度 Pod。
 
-> 20个node worker
->
-> 设置位置：deploy/resident/values/volcano.yaml
->
-> 对应启动参数 --node-worker-threads=20
->
-> 作用：Scheduler cache 里并行处理 Node 增删改/同步的 worker 数量
-
 ## 3. 运行使用方式
 
 ### 3.1 完整运行
@@ -133,6 +125,12 @@ scenario-2
 
 ```bash
 make scenario-2 SCHEDULERS=volcano
+```
+
+该命令默认使用 Agent Scheduler。需要临时改用 Batch Scheduler 时显式覆盖：
+
+```bash
+make scenario-2 SCHEDULERS=volcano VOLCANO_MODE=batch
 ```
 
 执行顺序为：
