@@ -215,7 +215,7 @@ Kueue、Scheduler Plugins 和 kube-prometheus-stack 的期望 SHA-256 已写入 
 - Agent Scheduler 名称：`agent-scheduler`
 - Helm release：`volcano`，chart `volcano-1.15.1`
 - 常驻 Deployment：`volcano-scheduler`、`volcano-agent-scheduler`、`volcano-controllers`、`volcano-admission`，各 `1` 副本
-- Agent Scheduler 镜像：`volcanosh/vc-agent-scheduler:v1.15.1`；Scheduler Worker 为 `4`，采用事件驱动调度，不设置 Batch Scheduler 的 `schedule-period`
+- Agent Scheduler 镜像：`volcanosh/vc-agent-scheduler:v1.15.1`；Scheduler Worker 为 `8`，采用事件驱动调度，不设置 Batch Scheduler 的 `schedule-period`
 - Sharding Controller：关闭
 - Webhook 目标命名空间标签：`benchmark.scheduling/base=volcano`
 - 安装后空闲配置：actions 为 `enqueue, allocate, backfill`；第一层为 `priority/gang/conformance`，第二层为 `overcommit/drf/predicates/proportion/nodeorder/binpack`
@@ -693,3 +693,9 @@ Grafana Ingress 的版本化部署源位于仓库，当前文件指纹如下：
 - Agent Scheduler 保持单 Deployment 副本，内部 `--scheduler-worker-count` 从上游默认值 `1` 调整为 `4`；Node Worker `20`、Kubernetes API QPS/Burst `1000/1000` 和 CPU `500m/8` 均保持不变。
 - 版本化 Helm values 已同步固定为 `agent_scheduler_worker_count: 4`，后续重新部署会保持该并发基线。
 - 本次仅部署并核对启动参数，不运行性能场景；Worker `4` 的吞吐与延迟效果需以后续 benchmark 结果判断。
+
+## 29. 2026-08-26 Agent Scheduler Worker 并发调整为 8
+
+- Agent Scheduler 保持单 Deployment 副本，内部 `--scheduler-worker-count` 从 `4` 调整为 `8`；Node Worker `20`、Kubernetes API QPS/Burst `1000/1000` 和 CPU `500m/8` 均保持不变。
+- 版本化 Helm values 已同步固定为 `agent_scheduler_worker_count: 8`，后续重新部署会保持该并发基线。
+- 本次仅重新部署 Volcano release 并核对 Agent Scheduler 启动参数，不运行性能场景；Worker `8` 的吞吐与延迟效果需以后续 benchmark 结果判断。
