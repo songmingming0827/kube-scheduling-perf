@@ -75,7 +75,7 @@
   - 客户端qps/burst为100/200，这里只有500个job，提交耗时会更少，最少要(500 - Burst 200) / QPS 100 ≈ 3 秒。
   - vc-controller的k8s client qps/burst为1000/1000，需要创建10000，创建最少耗时为（10000 - Burst1000）/ QPS 1000 ≈ 9 秒。**提交时间 < 创建时间**，所以这里提交时间几乎不影响创建pod的时间。
     - 但是由于有500个job，导致会vc-controller在创建podgroup，更新job时花费过多时间，导致整体pod创建时间增多，这里甚至可能达不到k8s client的qps限流
-  - 提示：这里由于设置失误，kube-manager-controller的qps/burst设置为了5000/10000，导致yunikorn的创建时间小于9s。
+  - 历史测试提示：当时 kube-controller-manager 的 qps/burst 误设为 `5000/10000`，因此 YuniKorn 的创建时间小于 9s；当前集群已修正为 `1000/1000`。
 
 - **created阶段性突变**现象（正常情况下created应该匀速增加，这里的现象说明controller创建pod时会间歇性卡住一会儿）。
   - **vc-controller的worker为100**，所以worker一起工作时能够处理100个job，故最多能产出2000个pod，开始时burst=200，所有worker一起开始工作，进度几乎一样，所以可以看到pod在**2000和4000左右会有“停滞”**，随着时间推移，各个worker工作进度不同，**错峰执行**，整个pod的产出曲线就变的**平滑**了；

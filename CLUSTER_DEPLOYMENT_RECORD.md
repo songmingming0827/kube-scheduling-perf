@@ -5,7 +5,7 @@
 本文记录远端调度基准集群的实际部署状态、安装来源、版本、关键配置、镜像摘要、重建顺序和已知风险，供故障恢复、版本更新和实验环境审计使用。
 
 - 初始记录时间：`2026-08-03T12:35:49Z`（北京时间 `2026-08-03 20:35:49`）
-- 最近变更时间：`2026-08-24`，完成 Volcano 场景 3 波动排查并将 KWOK Pod stage 并发基线固定为 `1`
+- 最近变更时间：`2026-08-26`，统一控制面 CPU 与 client 限流基线，并部署修复 QPS/Burst 传递问题的 Scheduler Plugins Controller
 - 服务器：`104.105.137.213`
 - 当前唯一 Kind 集群：`volcano-benchmark-1348`
 - Kubernetes：`v1.34.8`
@@ -107,14 +107,14 @@ Prometheus Service 还自动分配了第二个 NodePort `30104` 给 Service 的 
 
 长 Node 监控周期用于降低大量虚拟节点带来的状态检查开销。它也会让真实节点故障感知明显变慢，因此本集群不应作为通用 Kubernetes 集群使用。
 
-Controller Manager 静态 Pod 的 CPU request/limit 为 `1/8`，不设置内存 request/limit。
+Controller Manager 静态 Pod 的 CPU request/limit 为 `500m/8`，不设置内存 request/limit。
 
 ### 默认 Scheduler 自定义参数
 
 - `--kube-api-qps=1000`
 - `--kube-api-burst=1000`
 
-默认 Scheduler 静态 Pod 的 CPU request/limit 为 `1/8`，不设置内存 request/limit。Kueue 非 Gang 场景未指定 `schedulerName`，会经过该 Scheduler；Gang 场景使用 Coscheduling，Volcano 和 YuniKorn 使用各自 Scheduler。
+默认 Scheduler 静态 Pod 的 CPU request/limit 为 `500m/8`，不设置内存 request/limit。Kueue 非 Gang 场景未指定 `schedulerName`，会经过该 Scheduler；Gang 场景使用 Coscheduling，Volcano 和 YuniKorn 使用各自 Scheduler。
 
 ### etcd 自定义参数
 
@@ -254,6 +254,8 @@ Kueue、Scheduler Plugins 和 kube-prometheus-stack 的期望 SHA-256 已写入 
 - Scheduler 名称：`coscheduling`
 - Scheduler Deployment：`coscheduling`，`1` 副本
 - Controller Deployment：`scheduler-plugins-controller`，`1` 副本
+- Scheduler 镜像：`registry.k8s.io/scheduler-plugins/kube-scheduler:v0.34.7`
+- Controller 镜像：`crpi-ldgaqlsrparac7fl.cn-hangzhou.personal.cr.aliyuncs.com/mingm/scheduler-plugins-controller:v0.34.7-qpsfix`
 - PodGroup CRD：`podgroups.scheduling.x-k8s.io/v1alpha1`
 - ElasticQuota CRD：`elasticquotas.scheduling.x-k8s.io/v1alpha1`，供 `scheduler-plugins-controller` informer 使用
 - kube-scheduler 配置 API：`kubescheduler.config.k8s.io/v1`
@@ -263,7 +265,7 @@ Kueue、Scheduler Plugins 和 kube-prometheus-stack 的期望 SHA-256 已写入 
 - 启用 `Coscheduling` MultiPoint 和 QueueSort；QueueSort 中禁用其他插件
 - `permitWaitingTimeSeconds=60`
 - Scheduler Plugins Controller 配置参数：`qps=1000`、`burst=1000`、`workers=100`
-- v0.32.7 与 v0.34.7 的同一上游实现都会丢弃前两个参数所修改的 REST config，因此有效 QPS/Burst 都是 controller-runtime 默认值；保留参数是为了配置一致，未构建自定义镜像改变旧基线行为；`workers=100` 正常生效
+- 官方 v0.34.7 Controller 会丢弃参数修改后的 REST config，导致 `qps`、`burst` 不生效。当前 `v0.34.7-qpsfix` 基于官方 v0.34.7，仅应用上游 commit `4cd26c4899db13133e414322d9f208ffaf7904e7` 的单行修复，因此有效 QPS/Burst 为 `1000/1000`；`workers=100` 正常生效
 
 资源配置：
 
@@ -396,7 +398,7 @@ Exporter 自 `v0.0.28` 起每 `100ms` 轮询一次审计文件，与 ServiceMoni
 | Volcano Webhook | `volcanosh/vc-webhook-manager:v1.15.1` | `sha256:569e3671b6d9619c175062e6d3e82bfe3bb4bc3628b36347406ccc07f10fe12c` |
 | Kueue | `registry.k8s.io/kueue/kueue:v0.19.0` | `sha256:6fe2cbe4c7799eed1a8d49898c38b8bd73f1572df1825d7cf266ec9e2af70bec` |
 | Coscheduling Scheduler | `registry.k8s.io/scheduler-plugins/kube-scheduler:v0.34.7` | `sha256:ae94c1224ef5677ae54bc25b4161a602b4365f479610d550f972e829f7c5b1b6` |
-| Coscheduling Controller | `registry.k8s.io/scheduler-plugins/controller:v0.34.7` | `sha256:2b9b6c185b84d003b700506674ed09a37c08b7a62c42efd02f16c2ea3f102e30` |
+| Coscheduling Controller | `crpi-ldgaqlsrparac7fl.cn-hangzhou.personal.cr.aliyuncs.com/mingm/scheduler-plugins-controller:v0.34.7-qpsfix` | `sha256:17ac1ef07eb0fb0dc953e9b60bc0e07ac2744118a3d40adca61bc7f83dca1070` |
 | YuniKorn Scheduler | `apache/yunikorn:scheduler-1.9.0` | `sha256:96832082e9cfb97cb4d85349ada6243e7c2e3176f167cdde94ad37879f3c815f` |
 | YuniKorn Admission | `apache/yunikorn:admission-1.9.0` | `sha256:fe8f5ec91f6c73be4af36afbc41f349ff7bee532593107a80ad90ab3d680a911` |
 | Prometheus | `quay.io/prometheus/prometheus:v3.13.2-distroless` | `sha256:64f71bb84e03c855948418b0fc5dea53e9543d8e3fc9931598f583805507f05e` |
@@ -666,3 +668,11 @@ Grafana Ingress 的版本化部署源位于仓库，当前文件指纹如下：
 - KWOK 并发正式固定为 `nodeLeaseParallelism=4`、`podPlayStageParallelism=1`、`nodePlayStageParallelism=4`。仓库原生配置、版本化常驻 ConfigMap、远端权威部署包和实时集群已对齐。
 - 远端 `install-kwok-canary.sh` 会在应用上游 KWOK 清单后应用本地 `manifests/kwok-configuration.yaml`，再重启并等待 KWOK Controller，避免重建集群时被上游默认值覆盖。
 - trace1～trace6 镜像、实验批次及原始日志位置见工作区根目录 `volcano-v1.15.1-scenario3-throughput-variance-report.md` 的归档附录；诊断原始日志保留在服务器 `/root/benchmark-run-artifacts/`，不纳入 Git。
+
+## 26. 2026-08-26 控制面资源与 Scheduler Plugins Controller 基线
+
+- kube-controller-manager 和默认 kube-scheduler 的 CPU request/limit 从 `1/8` 统一调整为 `500m/8`；两者 Kubernetes client QPS/Burst 均为 `1000/1000`，kube-controller-manager 的 `concurrent-job-syncs=100` 保持不变。
+- Coscheduling Scheduler 继续使用官方 `registry.k8s.io/scheduler-plugins/kube-scheduler:v0.34.7`，仅 Controller 切换为 `v0.34.7-qpsfix`。
+- 修复镜像以官方 `v0.34.7` tag（commit `8283b14`）为基线，仅应用上游修复 commit `4cd26c4899db13133e414322d9f208ffaf7904e7`，依赖仍为 `client-go v0.34.7` 和 `controller-runtime v0.22.3`。
+- Controller 实际参数为 `--qps=1000 --burst=1000 --workers=100`，运行镜像摘要为 `sha256:17ac1ef07eb0fb0dc953e9b60bc0e07ac2744118a3d40adca61bc7f83dca1070`。
+- 更新后 `verify-base.sh 1000` 和 `verify-schedulers.sh` 均通过；`1001/1001` Node Ready，全部调度器 Deployment 正常。本次只完成基线部署验证，尚未使用新基线重跑八场景完整性能测试。

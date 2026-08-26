@@ -28,3 +28,11 @@ Run the scripts in this order for a fresh deployment:
 
 The Audit Policy and all local scheduler, monitoring, and KWOK overrides are
 included under `manifests/`; no second source repository is required.
+
+The resident baseline sets kube-controller-manager and the default
+kube-scheduler CPU request/limit to `500m/8` with client QPS/Burst
+`1000/1000`. Coscheduling keeps the official scheduler image at `v0.34.7` and
+uses `crpi-ldgaqlsrparac7fl.cn-hangzhou.personal.cr.aliyuncs.com/mingm/scheduler-plugins-controller:v0.34.7-qpsfix`
+for the Controller.
+That image is built from the official `v0.34.7` source with only upstream fix
+`4cd26c48` applied, so its Kubernetes dependencies remain at `v0.34.7`.

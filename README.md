@@ -34,11 +34,13 @@ Validated component versions:
 | KWOK | `v0.7.0` |
 | Volcano | `v1.15.1` |
 | Kueue | `v0.19.0` |
-| Scheduler Plugins / Coscheduling | `v0.34.7` |
+| Scheduler Plugins / Coscheduling | Scheduler `v0.34.7`; Controller `v0.34.7-qpsfix` |
 | Apache YuniKorn | `v1.9.0` |
 | kube-prometheus-stack | `88.1.3` |
 
 Override `KIND_CLUSTER_NAME`, `KUBECONFIG`, `KUBECTL`, or `RESIDENT_DEPLOY_DIR` when using an equivalent resident deployment at different paths.
+
+The control-plane kube-scheduler and kube-controller-manager both use CPU request/limit `500m/8` and Kubernetes client QPS/Burst `1000/1000`. The Controller image is based on the official `v0.34.7` tag with upstream QPS/Burst fix `4cd26c48`; no dependency version was upgraded.
 
 ### Quick Start
 

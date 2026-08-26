@@ -10,7 +10,7 @@
 | Volcano Webhook | `volcanosh/vc-webhook-manager:v1.15.1` | `sha256:569e3671b6d9619c175062e6d3e82bfe3bb4bc3628b36347406ccc07f10fe12c` |
 | Kueue | `registry.k8s.io/kueue/kueue:v0.19.0` | `sha256:6fe2cbe4c7799eed1a8d49898c38b8bd73f1572df1825d7cf266ec9e2af70bec` |
 | Coscheduling Scheduler | `registry.k8s.io/scheduler-plugins/kube-scheduler:v0.34.7` | `sha256:ae94c1224ef5677ae54bc25b4161a602b4365f479610d550f972e829f7c5b1b6` |
-| Coscheduling Controller | `registry.k8s.io/scheduler-plugins/controller:v0.34.7` | `sha256:2b9b6c185b84d003b700506674ed09a37c08b7a62c42efd02f16c2ea3f102e30` |
+| Coscheduling Controller | `crpi-ldgaqlsrparac7fl.cn-hangzhou.personal.cr.aliyuncs.com/mingm/scheduler-plugins-controller:v0.34.7-qpsfix` | `sha256:17ac1ef07eb0fb0dc953e9b60bc0e07ac2744118a3d40adca61bc7f83dca1070` |
 | YuniKorn Scheduler | `apache/yunikorn:scheduler-1.9.0` | `sha256:96832082e9cfb97cb4d85349ada6243e7c2e3176f167cdde94ad37879f3c815f` |
 | YuniKorn Admission | `apache/yunikorn:admission-1.9.0` | `sha256:fe8f5ec91f6c73be4af36afbc41f349ff7bee532593107a80ad90ab3d680a911` |
 | Prometheus | `quay.io/prometheus/prometheus:v3.13.2-distroless` | `sha256:64f71bb84e03c855948418b0fc5dea53e9543d8e3fc9931598f583805507f05e` |
