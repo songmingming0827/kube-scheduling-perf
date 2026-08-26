@@ -35,6 +35,7 @@ Copy this Skill's `scripts/run-scenario-test.sh` into the temporary working dire
 
 The wrapper performs the following work for every requested scenario, in order:
 
+- Removes only the repository result staging paths `tmp/result-staging`, `tmp/result-kueue-staging`, `tmp/result-volcano-staging`, and `tmp/result-yunikorn-staging` before the first scenario and after every scenario, including failed scenarios. Do not remove other repository `tmp/` content.
 - Runs exactly `make scenario-N` and saves a CST-timestamped console log and exit code.
 - Runs `make down` after that command finishes, including when the scenario fails, and saves its exit code.
 - Continues to the next requested scenario when the scenario command fails but `make down` succeeds.
@@ -105,7 +106,7 @@ After creating the report:
 2. Confirm every staged path is one of those requested result directories or the current report. Do not stage source changes or results from unrequested scenarios.
 3. Commit them together as `results: scenario test <scenario-list> MMDDHH` and push `master`.
 4. Fast-forward the local repository.
-5. Delete the server temporary working directory after its evidence has been incorporated into the report.
+5. Confirm the repository result staging paths named above are absent, then delete the server temporary working directory after its evidence has been incorporated into the report.
 
 If the run produced no result changes, publish the report alone. A failed run is still reported and published; do not conceal it by omitting the report.
 
