@@ -215,7 +215,7 @@ Kueue、Scheduler Plugins 和 kube-prometheus-stack 的期望 SHA-256 已写入 
 - Agent Scheduler 名称：`agent-scheduler`
 - Helm release：`volcano`，chart `volcano-1.15.1`
 - 常驻 Deployment：`volcano-scheduler`、`volcano-agent-scheduler`、`volcano-controllers`、`volcano-admission`，各 `1` 副本
-- Agent Scheduler 镜像：`volcanosh/vc-agent-scheduler:v1.15.1`；Scheduler Worker 为 `1`，采用事件驱动调度，不设置 Batch Scheduler 的 `schedule-period`
+- Agent Scheduler 镜像：`volcanosh/vc-agent-scheduler:v1.15.1`；Scheduler Worker 为 `4`，采用事件驱动调度，不设置 Batch Scheduler 的 `schedule-period`
 - Sharding Controller：关闭
 - Webhook 目标命名空间标签：`benchmark.scheduling/base=volcano`
 - 安装后空闲配置：actions 为 `enqueue, allocate, backfill`；第一层为 `priority/gang/conformance`，第二层为 `overcommit/drf/predicates/proportion/nodeorder/binpack`
@@ -687,3 +687,9 @@ Grafana Ingress 的版本化部署源位于仓库，当前文件指纹如下：
 - 仓库新增 `VOLCANO_MODE=auto|agent|batch`。`auto` 将场景 1～4 解析为 Agent、场景 5～8 解析为 Batch；Agent 模式拒绝 `GANG=true`。Agent 使用独立原生 `batch/v1` Job 模板，Batch 继续使用 VCJob。
 - 实际切换验证通过：进入 Agent 模式后仅 `volcano-agent-scheduler` 为 `1/1`，Batch Scheduler、Controller 和 Admission 均为 `0`；退出后 9 个调度组件全部恢复到空闲 `1` 副本基线，`1001/1001` Node Ready。
 - Agent 原生 Job 和既有 Volcano VCJob 的调度冒烟均通过。完整冒烟脚本随后在既有 YuniKorn 检查处停止：当前测试 ConfigMap 仅有 `root.sandbox`，而部署冒烟资源仍指定初装队列 `root.default`；该问题与 Agent 部署无关，本次未运行 benchmark，也未改动 YuniKorn 配置。
+
+## 28. 2026-08-26 Agent Scheduler Worker 并发调整
+
+- Agent Scheduler 保持单 Deployment 副本，内部 `--scheduler-worker-count` 从上游默认值 `1` 调整为 `4`；Node Worker `20`、Kubernetes API QPS/Burst `1000/1000` 和 CPU `500m/8` 均保持不变。
+- 版本化 Helm values 已同步固定为 `agent_scheduler_worker_count: 4`，后续重新部署会保持该并发基线。
+- 本次仅部署并核对启动参数，不运行性能场景；Worker `4` 的吞吐与延迟效果需以后续 benchmark 结果判断。
