@@ -18,55 +18,11 @@ YuniKorn
 保存汇总结果
 ```
 
-## 2. 常驻集群基础配置
 
-### 2.1 将 KWOK Node 缩减为 1000 个
 
-删除 `kwok-node-1000` 至 `kwok-node-4999`，最终保留：
+## 2. 运行使用方式
 
-- `1000` 个 KWOK Node
-- `1` 个控制面 Node
-- 合计 `1001/1001` Node Ready
-
-KWOK Controller 的并发基线固定为：
-
-```yaml
-nodeLeaseParallelism: 4
-podPlayStageParallelism: 1
-nodePlayStageParallelism: 4
-```
-
-其中 Pod 生命周期 stage 使用单 worker，避免大量 Running/Succeeded 状态更新集中进入同一 Volcano 调度 session；Node 和 Lease 并发保持现有集群值 `4`。仓库 `deploy/resident/manifests/kwok-configuration.yaml`、运行集群 ConfigMap 和服务器部署副本必须保持一致。
-
-podplaystageparallelism配置设置详见附录
-
-### 2.2 将现有结果展示能力放入常驻集群
-
-不再创建 overview 集群。常驻集群需要提供现有结果采集所依赖的能力：
-
-- Grafana 继续通过 `127.0.0.1:8080/grafana` 访问
-- 保留现有 `perf` Dashboard UID 和 Panel ID
-- 部署 Grafana Image Renderer，使现有图片渲染接口可用
-- Grafana 使用常驻集群 Prometheus 作为数据源
-- Audit Exporter 继续实时读取常驻集群的 API Server 审计日志
-
-完成后，源码中的 `save-result-images.sh` 不需要切换到其他端口。
-
-### 2.3 同时部署两套 Volcano Scheduler
-
-常驻集群同时部署 Volcano Batch Scheduler 和 Agent Scheduler：
-
-- `volcano-scheduler`：使用 `schedulerName=volcano`，继续处理 VCJob 和 Gang 场景
-- `volcano-agent-scheduler`：使用 `schedulerName=agent-scheduler`，处理原生 Kubernetes Job 的逐 Pod 调度
-- 两者镜像版本均为 `v1.15.1`，副本数均为 `1`
-- 两者复用 `1000/1000` 的 Kubernetes API QPS/Burst 和 `20` 个 Node Worker，CPU 基线均为 `500m/8`
-- Agent Scheduler 固定使用 `1` 个 Scheduler Worker，采用事件驱动调度，不设置 Batch Scheduler 的 `schedule-period`
-
-非测试状态下两套 Scheduler、`volcano-controllers` 和 `volcano-admission` 均保持 `1` 副本。两套 Scheduler 只处理与自身 `schedulerName` 匹配的 Pod，不会争抢同一个待调度 Pod。
-
-## 3. 运行使用方式
-
-### 3.1 完整运行
+### 2.1 完整运行
 
 运行八个场景和三个调度器：
 
@@ -90,7 +46,7 @@ make
         └── save-scheduler-result（分别保存三个调度器结果）
 ```
 
-### 3.2 单场景运行
+### 2.2 单场景运行
 
 运行一个场景和全部调度器：
 
@@ -119,7 +75,7 @@ scenario-2
     └── save-scheduler-result（分别保存三个调度器结果）
 ```
 
-### 3.3 单场景、单调度器运行
+### 2.3 单场景、单调度器运行
 
 例如只使用 Volcano 运行场景 2：
 
@@ -173,9 +129,9 @@ results/scenario-2/volcano/
 
 `scenario-1` 至 `scenario-8` 分别对应八个固定场景。运行异常中断后执行 `make down` 恢复常驻集群基线。
 
-## 4. Makefile 方案细节
+## 3. Makefile 方案细节
 
-### 4.1 常驻集群参数
+### 3.1 常驻集群参数
 
 在顶层 Makefile 中固定常驻集群操作入口：
 
@@ -190,171 +146,7 @@ VOLCANO_MODE = auto
 
 节点数量和单节点容量属于常驻集群基线，由部署包的验证脚本检查，不再作为测试 Makefile 参数暴露。
 
-### 4.2 `make up`
-
-将顶层 `up` 改为常驻集群初始化检查：
-
-- 检查当前 kubeconfig 指向 `volcano-benchmark-1348`
-- 检查 Kubernetes client/server 都是 `v1.34.8`
-- 检查 `1001/1001` Node Ready
-- 检查 `1000` 个 KWOK Node
-- 检查 Kueue、Coscheduling、Volcano Batch、Volcano Agent 和 YuniKorn，以及对应 Webhook、Controller 和关键 CRD 存在
-- 检查常驻监控、Grafana 和 Audit Exporter 可用
-- 创建本地结果、日志和临时状态目录
-- 编译三套测试二进制
-
-`up` 不再创建集群、节点、调度器或监控组件。
-
-### 4.3 `up-<scheduler>`
-
-每轮不再保存调度组件副本数、当前调度器或 ConfigMap。`up-<scheduler>` 将本轮目标组件设置为 `1` 副本后对其全部 Deployment 执行 `rollout restart`，将其他调度组件设置为 `0` 副本，等待新 Pod Ready、旧 Pod 和非目标 Pod 全部退出，再清理对应测试资源；不重复应用任何调度器配置。Volcano 目标组件由 `VOLCANO_MODE` 决定，实验配置统一由后续 `test-init-<scheduler>` 原地更新。
-
-#### `up-kueue`
-
-- 将两套 Volcano Scheduler、Volcano Controller、Admission 和 YuniKorn 相关 Deployment 缩容到 0
-- 将 Kueue Controller、Coscheduling Scheduler 和 Controller 恢复到 1
-- 重启 Kueue Controller、Coscheduling Scheduler 和 Controller
-- 等待非目标 Deployment 和 Pod 全部归零、目标新 Pod Ready 且旧 Pod 完全退出
-- 清理上次遗留的 Kueue、Coscheduling 测试资源并确认零残留
-
-#### `up-volcano`
-
-- 将 Kueue、Coscheduling 和 YuniKorn 相关 Deployment 缩容到 0
-- Agent 模式：将 Batch Scheduler、Controller 和 Admission 缩容到 0，将 Agent Scheduler 恢复到 1 并重启
-- Batch 模式：将 Agent Scheduler 缩容到 0，将 Batch Scheduler、Controller 和 Admission 恢复到 1 并重启
-- 等待非目标 Deployment 和 Pod 全部归零、目标新 Pod Ready 且旧 Pod 完全退出
-- 清理上次遗留的原生 Kubernetes Job、Volcano Job 和 Pod，并确认零残留
-
-#### `up-yunikorn`
-
-- 将两套 Volcano Scheduler、Volcano Controller、Admission、Kueue 和 Coscheduling 相关 Deployment 缩容到 0
-- 将 YuniKorn Scheduler 和 Admission 设置为 1，并保留 ConfigMap
-- 重启 YuniKorn Scheduler 和 Admission
-- 等待非目标 Deployment 和 Pod 全部归零、目标新 Pod Ready 且旧 Pod 完全退出
-- 清理上次遗留的 YuniKorn 测试资源并确认零残留
-
-### 4.4 `wait-<scheduler>`
-
-删除原来等待临时集群所有 Pod Ready 的逻辑，改为只等待本轮必要组件。
-
-#### Kueue
-
-- `kueue-controller-manager`
-- `coscheduling`
-- `scheduler-plugins-controller`
-
-#### Volcano
-
-- Agent 模式只等待 `volcano-agent-scheduler`，并确认 `volcano-scheduler`、`volcano-controllers` 和 `volcano-admission` 均为 0
-- Batch 模式等待 `volcano-scheduler`、`volcano-controllers` 和 `volcano-admission`，并确认 `volcano-agent-scheduler` 为 0
-
-#### YuniKorn
-
-- `yunikorn-scheduler`
-- `yunikorn-admission-controller`
-
-除等待目标组件外，还必须确认全部非目标 Deployment 状态副本和对应 Pod 已归零；完成后再次确认 `1001/1001` Node Ready。
-
-### 4.5 `test-init-<scheduler>`
-
-继续执行现有 `TestInit`，但统一使用常驻集群 kubeconfig。
-
-`TestInit` 只负责创建或更新本轮实验配置。Volcano 和 YuniKorn ConfigMap 不存在时创建、内容变化时原地更新并重启对应 Scheduler；内容一致时跳过更新和重启。Volcano 继续复用现有 `init.yaml`，ConfigMap 内容变化时根据 `VOLCANO_MODE` 重启本轮 Agent 或 Batch Scheduler：
-
-- Kueue：ResourceFlavor、WorkloadPriorityClass、ClusterQueue、LocalQueue
-- Volcano：Scheduler ConfigMap、`benchmark-root`、子 Queue、PriorityClass
-- YuniKorn：`yunikorn-configs`（`kubernetes.qps/burst=1000/1000`、`service.schedulingInterval=200ms`）
-
-`TestInit` 不再创建 Node。
-
-### 4.6 `start-<scheduler>`
-
-保留现有执行结构：
-
-1. `reset-auditlog-<scheduler>`
-2. `test-batch-job-<scheduler>`
-
-两者统一使用常驻集群和常驻控制面容器。
-
-### 4.7 `reset-auditlog-<scheduler>`
-
-沿用当前源码的处理时机，不在 `make up` 中统一清理日志。每个目标在对应调度器任务开始前：
-
-1. 将 Exporter 缩容到 0 并等待 Pod 完全退出。
-2. 不删除或截断 API Server 审计文件，也不重启 API Server。
-3. 使用本轮调度器名称作为 `--cluster-label`，并通过 `--start-at-end` 从当前审计文件末尾启动全新 Exporter 进程。
-4. 等待 Exporter Deployment Ready 后再创建本轮 Job。
-
-审计文件为：
-
-```text
-/var/log/kubernetes/kube-apiserver-audit.log
-```
-
-每轮使用全新的 Exporter 进程，使 Counter、Histogram 和对象关联状态从空状态开始；`--start-at-end` 跳过测试前已有的审计事件，因此无需清空日志或重启 API Server。运行期间发生 kube-apiserver 日志轮转时，Exporter 先读完旧文件尾部，再切换到新的主日志文件。Kueue、Volcano、YuniKorn 分别生成独立 `cluster` 标签。源码不创建 `./logs/kube-apiserver-audit.<scheduler>.log`。Exporter 本轮结束后保持当前参数和 `1` 副本运行，下一轮开始时直接切换标签。
-
-### 4.8 `test-batch-job-<scheduler>`
-
-统一使用：
-
-```text
-/root/benchmark-1348-deploy/kubeconfig
-```
-
-测试参数继续由 Makefile 传入，Job 只创建在对应测试命名空间。Volcano Agent 模式读取独立的 `agent_job.yaml` 并创建 `batch/v1` Job，Batch 模式继续读取 `batch_job.yaml` 并创建 `batch.volcano.sh/v1alpha1` Job。
-
-### 4.9 `end-<scheduler>`
-
-调整为：
-
-1. 等待 Exporter 指标稳定，并确认 Prometheus 中存在晚于稳定时刻的最终抓取样本
-2. 以 epoch 毫秒记录本轮结果时间窗结束时间
-3. 保持本轮 Exporter 以 `1` 副本运行
-4. 调用 `down-<scheduler>`
-
-本步骤不再复制或归档 API Server 审计日志。
-
-### 4.10 `down-<scheduler>`
-
-#### `down-kueue`
-
-- 使用 `kubectl delete --wait=false` 异步提交 `bench-kueue` 中 Job、Pod、Workload、LocalQueue 和 PodGroup 的删除请求
-- 默认等待最多 `600` 秒，确认上述命名空间资源全部归零
-- 删除测试创建的 ClusterQueue、ResourceFlavor、WorkloadPriorityClass
-- 对命名空间和集群级测试资源执行最终零残留断言
-- 将全部调度相关 Deployment 设置为 `1` 副本并等待 Ready
-
-#### `down-volcano`
-
-- 使用 `kubectl delete --wait=false` 异步提交 `bench-volcano` 中原生 Kubernetes Job、Volcano Job 和 Pod 的删除请求
-- 等待并确认上述命名空间资源全部归零
-- 删除测试创建的子 Queue、`benchmark-root` 和 PriorityClass
-- 对命名空间和集群级测试资源执行最终零残留断言
-- 保留 `TestInit` 原地更新后的 Volcano Scheduler ConfigMap
-- 将包括 Agent 和 Batch 在内的全部调度相关 Deployment 设置为 `1` 副本并等待 Ready
-
-#### `down-yunikorn`
-
-- 使用 `kubectl delete --wait=false` 异步提交 `bench-yunikorn` 中 Kubernetes Job 和 Pod 的删除请求
-- 等待并确认上述命名空间资源全部归零
-- 对命名空间测试资源执行最终零残留断言
-- 保留 `TestInit` 原地更新后的 `yunikorn-configs`
-- 将全部调度相关 Deployment 设置为 `1` 副本并等待 Ready
-
-### 4.11 顶层 `make down`
-
-将顶层 `down` 改为固定副本基线收敛入口：
-
-- 将全部调度组件和 Audit Exporter 设置为 `1` 副本，其中两套 Volcano Scheduler 均恢复到 1
-- 依次执行三套调度器资源清理
-- 不恢复或删除调度器 ConfigMap，不修改 Audit Exporter 当前标签
-- 等待全部组件 Ready
-- 阻塞清理并确认三套测试资源全部为零
-- 验证 `1001/1001` Node Ready
-
-`down` 不再移动结果目录，也不执行任何 Kind 集群删除操作。
-
-### 4.12 `serial-test`
+### 3.2 `serial-test`
 
 保留当前从 `prepare-<scheduler>` 开始的串行结构，不增加顶层 `make up` 调用。由于不再创建临时 Kind 集群，删除 `bin/kind` 前置依赖：
 
@@ -388,7 +180,162 @@ save-scheduler-result（为本轮每个调度器保存时间窗口和统计报�
 make down
 ```
 
-### 4.13 `save-result`
+### `prepare-<scheduler>`
+
+准备调度器环境
+
+#### 3.3 `make up`
+
+将顶层 `up` 改为常驻集群初始化检查：
+
+- 检查当前 kubeconfig 指向 `volcano-benchmark-1348`
+- 检查 Kubernetes client/server 都是 `v1.34.8`
+- 检查 `1001/1001` Node Ready
+- 检查 `1000` 个 KWOK Node
+- 检查 Kueue、Coscheduling、Volcano Batch、Volcano Agent 和 YuniKorn，以及对应 Webhook、Controller 和关键 CRD 存在
+- 检查常驻监控、Grafana 和 Audit Exporter 可用
+- 创建本地结果、日志和临时状态目录
+- 编译三套测试二进制
+
+`up` 不再创建集群、节点、调度器或监控组件。
+
+#### 3.4 `up-<scheduler>`
+
+每轮不再保存调度组件副本数、当前调度器或 ConfigMap。`up-<scheduler>` 将本轮目标组件设置为 `1` 副本后对其全部 Deployment 执行 `rollout restart`，将其他调度组件设置为 `0` 副本，等待新 Pod Ready、旧 Pod 和非目标 Pod 全部退出，再清理对应测试资源；不重复应用任何调度器配置。Volcano 目标组件由 `VOLCANO_MODE` 决定，实验配置统一由后续 `test-init-<scheduler>` 原地更新。
+
+##### `up-kueue`
+
+- 将两套 Volcano Scheduler、Volcano Controller、Admission 和 YuniKorn 相关 Deployment 缩容到 0
+- 将 Kueue Controller、Coscheduling Scheduler 和 Controller 恢复到 1
+- 重启 Kueue Controller、Coscheduling Scheduler 和 Controller
+- 等待非目标 Deployment 和 Pod 全部归零、目标新 Pod Ready 且旧 Pod 完全退出
+- 清理上次遗留的 Kueue、Coscheduling 测试资源并确认零残留
+
+##### `up-volcano`
+
+- 将 Kueue、Coscheduling 和 YuniKorn 相关 Deployment 缩容到 0
+- Agent 模式：将 Batch Scheduler、Controller 和 Admission 缩容到 0，将 Agent Scheduler 恢复到 1 并重启
+- Batch 模式：将 Agent Scheduler 缩容到 0，将 Batch Scheduler、Controller 和 Admission 恢复到 1 并重启
+- 等待非目标 Deployment 和 Pod 全部归零、目标新 Pod Ready 且旧 Pod 完全退出
+- 清理上次遗留的原生 Kubernetes Job、Volcano Job 和 Pod，并确认零残留
+
+##### `up-yunikorn`
+
+- 将两套 Volcano Scheduler、Volcano Controller、Admission、Kueue 和 Coscheduling 相关 Deployment 缩容到 0
+- 将 YuniKorn Scheduler 和 Admission 设置为 1，并保留 ConfigMap
+- 重启 YuniKorn Scheduler 和 Admission
+- 等待非目标 Deployment 和 Pod 全部归零、目标新 Pod Ready 且旧 Pod 完全退出
+- 清理上次遗留的 YuniKorn 测试资源并确认零残留
+
+#### 3.5 `wait-<scheduler>`
+
+删除原来等待临时集群所有 Pod Ready 的逻辑，改为只等待本轮必要组件。
+
+##### Kueue
+
+- `kueue-controller-manager`
+- `coscheduling`
+- `scheduler-plugins-controller`
+
+##### Volcano
+
+- Agent 模式只等待 `volcano-agent-scheduler`，并确认 `volcano-scheduler`、`volcano-controllers` 和 `volcano-admission` 均为 0
+- Batch 模式等待 `volcano-scheduler`、`volcano-controllers` 和 `volcano-admission`，并确认 `volcano-agent-scheduler` 为 0
+
+##### YuniKorn
+
+- `yunikorn-scheduler`
+- `yunikorn-admission-controller`
+
+除等待目标组件外，还必须确认全部非目标 Deployment 状态副本和对应 Pod 已归零；完成后再次确认 `1001/1001` Node Ready。
+
+#### 3.6 `test-init-<scheduler>`
+
+继续执行现有 `TestInit`，但统一使用常驻集群 kubeconfig。
+
+`TestInit` 只负责创建或更新本轮实验配置。Volcano 和 YuniKorn ConfigMap 不存在时创建、内容变化时原地更新并重启对应 Scheduler；内容一致时跳过更新和重启。Volcano 继续复用现有 `init.yaml`，ConfigMap 内容变化时根据 `VOLCANO_MODE` 重启本轮 Agent 或 Batch Scheduler：
+
+- Kueue：ResourceFlavor、WorkloadPriorityClass、ClusterQueue、LocalQueue
+- Volcano：Scheduler ConfigMap、`benchmark-root`、子 Queue、PriorityClass
+- YuniKorn：`yunikorn-configs`（`kubernetes.qps/burst=1000/1000`、`service.schedulingInterval=200ms`）
+
+`TestInit` 不再创建 Node。
+
+### 3.7 `start-<scheduler>`
+
+保留现有执行结构：
+
+1. `reset-auditlog-<scheduler>`
+2. `test-batch-job-<scheduler>`
+
+两者统一使用常驻集群和常驻控制面容器。
+
+#### 3.8 `reset-auditlog-<scheduler>`
+
+沿用当前源码的处理时机，不在 `make up` 中统一清理日志。每个目标在对应调度器任务开始前：
+
+1. 将 Exporter 缩容到 0 并等待 Pod 完全退出。
+2. 不删除或截断 API Server 审计文件，也不重启 API Server。
+3. 使用本轮调度器名称作为 `--cluster-label`，并通过 `--start-at-end` 从当前审计文件末尾启动全新 Exporter 进程。
+4. 等待 Exporter Deployment Ready 后再创建本轮 Job。
+
+审计文件为：
+
+```text
+/var/log/kubernetes/kube-apiserver-audit.log
+```
+
+每轮使用全新的 Exporter 进程，使 Counter、Histogram 和对象关联状态从空状态开始；`--start-at-end` 跳过测试前已有的审计事件，因此无需清空日志或重启 API Server。运行期间发生 kube-apiserver 日志轮转时，Exporter 先读完旧文件尾部，再切换到新的主日志文件。Kueue、Volcano、YuniKorn 分别生成独立 `cluster` 标签。源码不创建 `./logs/kube-apiserver-audit.<scheduler>.log`。Exporter 本轮结束后保持当前参数和 `1` 副本运行，下一轮开始时直接切换标签。
+
+#### 3.9 `test-batch-job-<scheduler>`
+
+统一使用：
+
+```text
+/root/benchmark-1348-deploy/kubeconfig
+```
+
+测试参数继续由 Makefile 传入，Job 只创建在对应测试命名空间。Volcano Agent 模式读取独立的 `agent_job.yaml` 并创建 `batch/v1` Job，Batch 模式继续读取 `batch_job.yaml` 并创建 `batch.volcano.sh/v1alpha1` Job。
+
+### 3.10 `end-<scheduler>`
+
+调整为：
+
+1. 等待 Exporter 指标稳定，并确认 Prometheus 中存在晚于稳定时刻的最终抓取样本
+2. 以 epoch 毫秒记录本轮结果时间窗结束时间
+3. 保持本轮 Exporter 以 `1` 副本运行
+4. 调用 `down-<scheduler>`
+
+本步骤不再复制或归档 API Server 审计日志。
+
+#### 3.11 `down-<scheduler>`
+
+##### `down-kueue`
+
+- 使用 `kubectl delete --wait=false` 异步提交 `bench-kueue` 中 Job、Pod、Workload、LocalQueue 和 PodGroup 的删除请求
+- 默认等待最多 `600` 秒，确认上述命名空间资源全部归零
+- 删除测试创建的 ClusterQueue、ResourceFlavor、WorkloadPriorityClass
+- 对命名空间和集群级测试资源执行最终零残留断言
+- 将全部调度相关 Deployment 设置为 `1` 副本并等待 Ready
+
+##### `down-volcano`
+
+- 使用 `kubectl delete --wait=false` 异步提交 `bench-volcano` 中原生 Kubernetes Job、Volcano Job 和 Pod 的删除请求
+- 等待并确认上述命名空间资源全部归零
+- 删除测试创建的子 Queue、`benchmark-root` 和 PriorityClass
+- 对命名空间和集群级测试资源执行最终零残留断言
+- 保留 `TestInit` 原地更新后的 Volcano Scheduler ConfigMap
+- 将包括 Agent 和 Batch 在内的全部调度相关 Deployment 设置为 `1` 副本并等待 Ready
+
+##### `down-yunikorn`
+
+- 使用 `kubectl delete --wait=false` 异步提交 `bench-yunikorn` 中 Kubernetes Job 和 Pod 的删除请求
+- 等待并确认上述命名空间资源全部归零
+- 对命名空间测试资源执行最终零残留断言
+- 保留 `TestInit` 原地更新后的 `yunikorn-configs`
+- 将全部调度相关 Deployment 设置为 `1` 副本并等待 Ready
+
+### 3.12 `save-result`
 
 删除其中的：
 
@@ -405,7 +352,7 @@ make down
 
 单调度器运行不调用 `save-result`，因此不会替换已有的完整场景目录。
 
-### 4.14 `save-scheduler-result`
+### 3.13 `save-scheduler-result`
 
 每个被选中的调度器完成后，根据 `result-<scheduler>-from-millis` 和 `result-<scheduler>-to-millis` 保存：
 
@@ -418,9 +365,22 @@ make down
 
 结果写入 `results/scenario-<n>/<scheduler>`。Agent 和 Batch 均写入 `results/scenario-<n>/volcano`，场景 1～4 默认表示 Agent、场景 5～8 默认表示 Batch。完整场景运行保存三个调度器目录；单调度器运行只原子替换本轮调度器目录，不修改同场景的其他结果。
 
-## 5. Go 测试方案细节
+### 3.14 顶层 `make down`
 
-### 5.1 限定测试命名空间
+将顶层 `down` 改为固定副本基线收敛入口：
+
+- 将全部调度组件和 Audit Exporter 设置为 `1` 副本，其中两套 Volcano Scheduler 均恢复到 1
+- 依次执行三套调度器资源清理
+- 不恢复或删除调度器 ConfigMap，不修改 Audit Exporter 当前标签
+- 等待全部组件 Ready
+- 阻塞清理并确认三套测试资源全部为零
+- 验证 `1001/1001` Node Ready
+
+`down` 不再移动结果目录，也不执行任何 Kind 集群删除操作。
+
+## 4. Go 测试方案细节
+
+### 4.1 限定测试命名空间
 
 固定使用：
 
@@ -432,7 +392,7 @@ make down
 
 所有 Job、LocalQueue、PodGroup 和其他 namespaced 测试资源都改到对应命名空间。
 
-### 5.2 调整完成等待逻辑
+### 4.2 调整完成等待逻辑
 
 `WaitDeployment` 增加目标 namespace 参数，只检查对应测试命名空间中带 `test-instance=1` 的 Pod，避免被其他调度器或历史资源干扰。
 
@@ -443,25 +403,25 @@ Volcano Provider 根据解析后的 `VOLCANO_MODE` 选择 Job 类型和完成条
 - Agent：创建原生 `batch/v1` Job，等待每个 Job 出现 `Complete=True`
 - Batch：创建 `batch.volcano.sh/v1alpha1` Job，继续等待 `status.state.phase=Completed`
 
-## 6. Kueue 测试资源方案细节
+## 5. Kueue 测试资源方案细节
 
 - 测试资源使用 `kueue.x-k8s.io/v1beta2` API。
 - ClusterQueue 使用 `cohortName`，其 `namespaceSelector` 只匹配 `bench-kueue`。
 - Gang 场景继续通过 Coscheduling PodGroup 表达整组调度约束。
 
-## 7. Volcano 测试资源方案细节
+## 6. Volcano 测试资源方案细节
 
-### 7.1 模式选择
+### 6.1 模式选择
 
 `volcano` 继续作为三调度器对比中的逻辑名称。场景 1～4 默认使用原生 Kubernetes Job 和 Agent Scheduler；场景 5～8 默认使用 VCJob 和 Batch Scheduler。两种模式使用相同的 Job 数、每 Job Pod 数、资源请求、PriorityClass、KWOK NodeSelector、Toleration 和完成延迟，只改变 Job Controller 路径和实际 Scheduler。
 
 Agent 模式的原生 Job 使用 `parallelism` 和 `completions` 表达每 Job Pod 数，Pod 模板固定 `schedulerName=agent-scheduler`。Agent 不提供 Gang、Queue、Capacity 或 Batch Session 语义，因此只用于非 Gang 的场景 1～4。
 
-### 7.2 专用父队列
+### 6.2 专用父队列
 
 不修改内置 `root` Queue。测试统一创建 `benchmark-root` 作为 `root` 的可回收子队列，将全部测试队列共享的 CPU 和内存总上限设置在该队列，并让所有 `test-queue-*` 以 `benchmark-root` 为父队列。
 
-### 7.3 Batch Scheduler 配置
+### 6.3 Batch Scheduler 配置
 
 - 固定 Actions：`enqueue`、`allocate`、`backfill`、`reclaim`
 - 固定 Plugins：第一层使用 `priority`，第二层使用 `predicates` 和 `capacity`；`capacity.enableHierarchy` 固定为 `true`
@@ -469,7 +429,7 @@ Agent 模式的原生 Job 使用 `parallelism` 和 `completions` 表达每 Job P
 - Preemption 场景在 Actions 中增加 `preempt`
 - 仅在内容变化时原地更新 `volcano-scheduler-configmap` 并重启 Scheduler；内容一致时不操作
 
-### 7.4 Agent Scheduler 配置
+### 6.4 Agent Scheduler 配置
 
 - 固定 Action：`allocate`
 - 固定 Plugins：`predicates` 和 `nodeorder`
@@ -477,20 +437,20 @@ Agent 模式的原生 Job 使用 `parallelism` 和 `completions` 表达每 Job P
 - 使用事件驱动队列，不设置 `schedule-period`
 - 不启用 Sharding，使用全部 KWOK Node；Batch Scheduler 在 Agent 测试期间为 0，不存在节点争用
 
-## 8. YuniKorn 测试资源方案细节
+## 7. YuniKorn 测试资源方案细节
 
 - 调度配置保存在 `yunikorn` namespace 的 `yunikorn-configs` ConfigMap 中。
 - Job 保留 application ID、queue 和 gang scheduling annotations。
 
-## 9. 结果采集方案细节
+## 8. 结果采集方案细节
 
-### 9.1 结果图片与元数据归档
+### 8.1 结果图片与元数据归档
 
 每个场景的三套调度方案测试完成并生成相对 Dashboard 后，等待 Grafana API 返回与本轮一致的时间窗，再通过 `127.0.0.1:8080/grafana` 渲染相对 Dashboard。结果图片统一截取顶部场景说明和 `Job Submission — Created vs Scheduled` 两个面板，并保留固定的上下留白。原 `perf` Dashboard 继续在 Grafana 中展示，但不作为结果图片来源。
 
 完整测试结果目录固定为 `results/scenario-1` 至 `results/scenario-8`，每个目录直接保存一张 `job-submission.png`、本轮的 `envs.txt` 和 `result-window.txt`，以及 `kueue`、`volcano`、`yunikorn` 三个调度器子目录。每个调度器子目录保存 `window.txt` 和 `report.txt`。`envs.txt` 中的 `VOLCANO_MODE` 标明 `volcano` 子目录实际使用 Agent 还是 Batch。完整场景制品先写入独立 staging 目录后原子替换；单调度器运行只原子替换对应调度器子目录，不覆盖完整对比结果。完整 `make` 最终生成 8 个场景目录、8 张图片和 24 组调度器报告；图片渲染失败只记录警告，不影响元数据和结果目录归档。
 
-### 9.2 八个相对时间 Dashboard 模板
+### 8.2 八个相对时间 Dashboard 模板
 
 相对时间 Dashboard 模板用于将同一场景下 Kueue、Volcano 和 YuniKorn 的指标曲线放到统一时间轴上，直接比较三套调度方案的任务创建和调度速度。时间范围定义如下：
 
@@ -789,4 +749,4 @@ scheduler的session期间发生updatepod的数量是有波动的，甚至会在1
 >    3. CPU cache：是 goroutine虽然能运行，但每次运行的效率降低。`UpdatePod` 与调度热循环交替运行，会反复读写不同内存区域，可能挤出 Predicate/Prioritize 正在使用的 CPU cache 数据。
 >    4. Go runtime：Go runtime需要调度这些 goroutine、维护运行队列并进行 work stealing，使调度热路径的单位执行成本发生变化。
 
-## 111
+## 8

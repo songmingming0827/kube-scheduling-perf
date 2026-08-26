@@ -1,0 +1,4 @@
+interface:
+  display_name: "运行场景测试"
+  short_description: "按指定顺序运行一个或多个常驻集群基准场景并生成报告"
+  default_prompt: "使用 $run-scenario-test 按顺序运行场景 1 和场景 3，并生成场景测试报告。"
