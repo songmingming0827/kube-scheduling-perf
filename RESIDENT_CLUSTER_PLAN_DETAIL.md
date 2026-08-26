@@ -494,6 +494,39 @@ Volcano 的 PodGroup Controller 会发现这些 Pod，并自动创建 PodGroup�
 → Volcano Scheduler 将 PodGroup 设置为 Inqueue，并对组内 Pod执行调度和 Binding
 ```
 
+**使用vcjob和使用schedulerName=volcano的原声job哪个创建pod的速度更快呢？**
+
+1. 大量 Job、每个 Job 只有 1 个 Pod：原生 Job + `schedulerName: volcano` 通常创建更快。它不需要等待 PodGroup 先进入 `Inqueue`，Job Controller 可以直接创建 Pod。
+
+2. 少量 Job、每个 Job 包含大量 Pod：VCJob 通常更快。VCJob 在 PodGroup 进入 `Inqueue` 后会高度并发创建该 Job 的全部缺失 Pod；原生 Job Controller 使用 `1、2、4、8...` slow-start，并且单次同步最多创建 500 个 Pod。
+
+3. 从“创建后立即可被 Volcano 调度”看：VCJob 链路更直接。原生 Job 创建 Pod 后，还要等待 vc-controller 创建 PodGroup并回写关联 Annotation。
+
+   | 场景 | 结构              | 更可能创建得快  |
+   | ---- | ----------------- | --------------- |
+   | 1/5  | 10000 Job × 1 Pod | 原生 Job        |
+   | 2/6  | 500 Job × 20 Pod  | 原生 Job或接近  |
+   | 3/7  | 20 Job × 500 Pod  | VCJob           |
+   | 4/8  | 1 Job × 10000 Pod | VCJob，优势明显 |
+
+### 原生job + kueue-controller准入后创建pod流程：
+
+```
+提交带 Kueue Queue Label、且 suspend=true 的原生 batch/v1 Job
+→ kube-apiserver
+→ Admission（内置准入及 Kueue Webhook）
+→ 写入 etcd → Kueue Controller 通过 Informer 发现 Job
+→ Kueue Controller 根据 Job 创建对应的 Workload
+→ Workload 写入 etcd并进入对应 LocalQueue、ClusterQueue 等待准入
+→ Kueue Controller 检查配额和 ResourceFlavor，将满足条件的 Workload 设置为 Admitted
+→ Kueue Controller 更新 Job 并将 suspend 设置为 false
+→ Job 更新写入 etcd → kube-controller-manager 的 Job Controller 通过 Informer 发现 Job 已解除挂起
+→ Job Controller 分批/并发调用 kube-apiserver CREATE Pod
+→ Pod Admission
+→ 写入 etcd
+→ Pod 创建完成，进入 Pending/等待调度状态
+```
+
 ## 3. volcano调度周期
 
 Volcano 一轮调度的核心范围是：
