@@ -43,6 +43,20 @@ epoch_millis() {
   python3 -c 'import time; print(time.time_ns() // 1_000_000)'
 }
 
+cleanup_result_staging() {
+  local path
+
+  for path in \
+    ./tmp/result-staging \
+    ./tmp/result-kueue-staging \
+    ./tmp/result-volcano-staging \
+    ./tmp/result-yunikorn-staging; do
+    if [[ -e "${path}" ]]; then
+      rm -rf -- "${path}"
+    fi
+  done
+}
+
 write_result_manifest() {
   local destination="$1"
   local scenario directory file digest
@@ -60,6 +74,8 @@ write_result_manifest() {
   done
 }
 
+cleanup_result_staging
+
 started_epoch_millis="$(epoch_millis)"
 TZ=Asia/Shanghai date '+%Y-%m-%d %H:%M:%S' >"${run_workspace}/started-cst.txt"
 printf '%s\n' "${started_epoch_millis}" >"${run_workspace}/started-epoch-millis.txt"
@@ -74,6 +90,7 @@ printf '%s\n' "${make_status}" >"${run_workspace}/make-exit-code.txt"
 make down 2>&1 | timestamp_stream | tee "${run_workspace}/make-down.log"
 down_status="${PIPESTATUS[0]}"
 printf '%s\n' "${down_status}" >"${run_workspace}/make-down-exit-code.txt"
+cleanup_result_staging
 set -o errexit
 
 write_result_manifest "${run_workspace}/results-after.tsv"

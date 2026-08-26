@@ -27,6 +27,7 @@ Copy this Skill's `scripts/run-full-test.sh` into the temporary working director
 
 The wrapper performs the following work:
 
+- Removes only the repository result staging paths `tmp/result-staging`, `tmp/result-kueue-staging`, `tmp/result-volcano-staging`, and `tmp/result-yunikorn-staging` before the top-level `make` and after `make down`, including failed runs. Do not remove other repository `tmp/` content.
 - Runs one top-level `make` and saves a CST-timestamped console log.
 - Saves the tested Commit and the start/end times.
 - Records result manifests before and after the run.
@@ -94,7 +95,7 @@ After creating the report:
 2. Confirm every staged path is under `results/` or is the current report.
 3. Commit both as `results: full test MMDDHH` and push `master`.
 4. Fast-forward the local repository.
-5. Delete the server temporary working directory after its evidence has been incorporated into the report.
+5. Confirm the repository result staging paths named above are absent, then delete the server temporary working directory after its evidence has been incorporated into the report.
 
 ## 6. Return
 
