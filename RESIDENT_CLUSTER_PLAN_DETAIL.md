@@ -1,7 +1,5 @@
 # 常驻集群方案细节
 
-如非必要出现源码，则尽量以口头的方式来描述。
-
 ## 1. 目标
 
 将 kube-scheduling-perf 的被测环境改为固定复用远端常驻集群 `volcano-benchmark-1348`，三套调度方案继续串行运行，不再为 Kueue、Volcano 和 YuniKorn 分别创建临时 Kind 集群。
@@ -18,8 +16,6 @@ YuniKorn
 保存汇总结果
 ```
 
-
-
 ## 2. 运行使用方式
 
 ### 2.1 完整运行
@@ -30,21 +26,7 @@ YuniKorn
 make
 ```
 
-`make` 依次调用 `scenario-1` 至 `scenario-8`。每个场景依次运行 Kueue、Volcano 和 YuniKorn；Volcano 在场景 1～4 默认使用 Agent Scheduler，在场景 5～8 默认使用 Batch Scheduler。三个调度器均完成后生成相对 Dashboard、场景图片与元数据，并保存各调度器的 `window.txt` 和 `report.txt`。
-
-执行顺序：
-
-```text
-make
-└── scenario-1 → scenario-2 → … → scenario-8（串行）
-    └── 每个场景调用 serial-test
-        ├── Kueue：prepare → start → end
-        ├── Volcano：prepare → start → end（场景 1～4 Agent，场景 5～8 Batch）
-        ├── YuniKorn：prepare → start → end
-        ├── update-relative-dashboard
-        ├── save-result
-        └── save-scheduler-result（分别保存三个调度器结果）
-```
+`make` 串行调用 `scenario-1` 至 `scenario-8`。每个场景依次运行 Kueue、Volcano 和 YuniKorn；Volcano 在场景 1～4 默认使用 Agent Scheduler，在场景 5～8 默认使用 Batch Scheduler。每个场景完成后生成相对 Dashboard、图片、元数据和三套调度器报告。
 
 ### 2.2 单场景运行
 
@@ -54,25 +36,12 @@ make
 make scenario-2
 ```
 
-该命令载入场景 2 的固定参数，再调用 `serial-test` 依次运行三个调度器。`VOLCANO_MODE=auto` 会将场景 2 解析为 Agent 模式。测试完成后更新场景 2 的相对 Dashboard 和完整场景结果，并分别保存：
+该命令载入场景 2 的固定参数，再通过 `serial-test` 依次运行三个调度器。`VOLCANO_MODE=auto` 将场景 2 解析为 Agent 模式。完成后更新相对 Dashboard 和以下结果目录：
 
 ```text
 results/scenario-2/kueue/
 results/scenario-2/volcano/
 results/scenario-2/yunikorn/
-```
-
-执行顺序：
-
-```text
-scenario-2
-└── serial-test
-    ├── Kueue：prepare → start → end
-    ├── Volcano Agent Scheduler：prepare → start → end
-    ├── YuniKorn：prepare → start → end
-    ├── update-relative-dashboard
-    ├── save-result
-    └── save-scheduler-result（分别保存三个调度器结果）
 ```
 
 ### 2.3 单场景、单调度器运行
@@ -83,41 +52,7 @@ scenario-2
 make scenario-2 SCHEDULERS=volcano
 ```
 
-该命令默认使用 Agent Scheduler。需要临时改用 Batch Scheduler 时显式覆盖：
-
-```bash
-make scenario-2 SCHEDULERS=volcano VOLCANO_MODE=batch
-```
-
-执行顺序为：
-
-```text
-scenario-2
-└── serial-test
-    ├── prepare-volcano
-    │   ├── up-volcano
-    │   │   └── activate-volcano
-    │   ├── wait-volcano
-    │   │   └── wait-resident-volcano
-    │   └── test-init-volcano
-    ├── start-volcano
-    │   ├── reset-auditlog-volcano
-    │   ├── 记录 Volcano 指标起点
-    │   └── test-batch-job-volcano
-    ├── end-volcano
-    │   ├── wait-audit-metrics-scraped
-    │   ├── 记录 Volcano 指标终点
-    │   └── down-volcano
-    │       └── deactivate-volcano
-    │           ├── cleanup-volcano-resources
-    │           ├── enable-all-schedulers
-    │           └── wait-all-schedulers
-    └── save-scheduler-result
-```
-
-`up-volcano` 停用 Kueue、Coscheduling 和 YuniKorn，再根据 `VOLCANO_MODE` 选择目标 Scheduler。Agent 模式只保留并重启 `volcano-agent-scheduler`，将 Batch Scheduler、Controller 和 Admission 缩容到 0；Batch 模式保持原有三组件启停和重启流程。测试资源统一限定在 `bench-volcano`。Audit Exporter 继续使用 `cluster=volcano` 从当前审计日志末尾重新采集。`end-volcano` 确认最终指标已进入 Prometheus 后清理本轮资源并恢复包括两套 Volcano Scheduler 在内的全部调度组件。
-
-最后只更新：
+单调度器运行仍执行对应的 `prepare → start → end` 流程，但只保存该调度器的结果。例如 Volcano 仅更新：
 
 ```text
 results/scenario-2/volcano/
@@ -125,7 +60,7 @@ results/scenario-2/volcano/
 └── report.txt
 ```
 
-不会更新三调度器相对 Dashboard，也不会覆盖 `results/scenario-2` 中已有的完整对比结果。Agent 和 Batch 继续共用逻辑名称 `volcano`、审计标签和结果目录，实际模式记录在完整场景的 `envs.txt` 中。将 `SCHEDULERS` 改为 `kueue` 或 `yunikorn` 时执行相同流程，并写入对应调度器目录。
+单调度器运行不更新三调度器相对 Dashboard，也不覆盖已有的完整对比结果。Agent 和 Batch 共用逻辑名称 `volcano`、审计标签和结果目录，实际模式记录在完整场景的 `envs.txt` 中。将 `SCHEDULERS` 改为 `kueue` 或 `yunikorn` 时写入对应目录。
 
 `scenario-1` 至 `scenario-8` 分别对应八个固定场景。运行异常中断后执行 `make down` 恢复常驻集群基线。
 
@@ -139,8 +74,14 @@ results/scenario-2/volcano/
 KIND_CLUSTER_NAME = volcano-benchmark-1348
 KUBECONFIG = /root/benchmark-1348-deploy/kubeconfig
 KUBECTL = /root/benchmark-1348-deploy/bin/kubectl
+scenario-N
+SCHEDULERS
 VOLCANO_MODE = auto
 ```
+
+`scenario-N` 表示用户选择测试场景，例如scenario-1 ～ scenario-8，表示测试单场景
+
+`SCHEDULERS` 接受调度器，和 `scenario-N` 一起配合使用，表示测试单场景+单调度器
 
 `VOLCANO_MODE` 接受 `auto`、`agent` 和 `batch`。`auto` 根据 `RELATIVE_DASHBOARD_SCENARIO` 将场景 1～4 解析为 `agent`、场景 5～8 解析为 `batch`；显式传值可以覆盖默认选择。Agent 不支持 Gang，因此 `GANG=true` 与 Agent 模式的组合直接拒绝执行。
 
@@ -180,26 +121,9 @@ save-scheduler-result（为本轮每个调度器保存时间窗口和统计报�
 make down
 ```
 
-### `prepare-<scheduler>`
+### 3.3 `prepare-<scheduler>`
 
-准备调度器环境
-
-#### 3.3 `make up`
-
-将顶层 `up` 改为常驻集群初始化检查：
-
-- 检查当前 kubeconfig 指向 `volcano-benchmark-1348`
-- 检查 Kubernetes client/server 都是 `v1.34.8`
-- 检查 `1001/1001` Node Ready
-- 检查 `1000` 个 KWOK Node
-- 检查 Kueue、Coscheduling、Volcano Batch、Volcano Agent 和 YuniKorn，以及对应 Webhook、Controller 和关键 CRD 存在
-- 检查常驻监控、Grafana 和 Audit Exporter 可用
-- 创建本地结果、日志和临时状态目录
-- 编译三套测试二进制
-
-`up` 不再创建集群、节点、调度器或监控组件。
-
-#### 3.4 `up-<scheduler>`
+#### 3.3.1 `up-<scheduler>`
 
 每轮不再保存调度组件副本数、当前调度器或 ConfigMap。`up-<scheduler>` 将本轮目标组件设置为 `1` 副本后对其全部 Deployment 执行 `rollout restart`，将其他调度组件设置为 `0` 副本，等待新 Pod Ready、旧 Pod 和非目标 Pod 全部退出，再清理对应测试资源；不重复应用任何调度器配置。Volcano 目标组件由 `VOLCANO_MODE` 决定，实验配置统一由后续 `test-init-<scheduler>` 原地更新。
 
@@ -227,7 +151,7 @@ make down
 - 等待非目标 Deployment 和 Pod 全部归零、目标新 Pod Ready 且旧 Pod 完全退出
 - 清理上次遗留的 YuniKorn 测试资源并确认零残留
 
-#### 3.5 `wait-<scheduler>`
+#### 3.3.2 `wait-<scheduler>`
 
 删除原来等待临时集群所有 Pod Ready 的逻辑，改为只等待本轮必要组件。
 
@@ -249,7 +173,7 @@ make down
 
 除等待目标组件外，还必须确认全部非目标 Deployment 状态副本和对应 Pod 已归零；完成后再次确认 `1001/1001` Node Ready。
 
-#### 3.6 `test-init-<scheduler>`
+#### 3.3.3 `test-init-<scheduler>`
 
 继续执行现有 `TestInit`，但统一使用常驻集群 kubeconfig。
 
@@ -261,7 +185,7 @@ make down
 
 `TestInit` 不再创建 Node。
 
-### 3.7 `start-<scheduler>`
+### 3.4 `start-<scheduler>`
 
 保留现有执行结构：
 
@@ -270,7 +194,7 @@ make down
 
 两者统一使用常驻集群和常驻控制面容器。
 
-#### 3.8 `reset-auditlog-<scheduler>`
+#### 3.4.1 `reset-auditlog-<scheduler>`
 
 沿用当前源码的处理时机，不在 `make up` 中统一清理日志。每个目标在对应调度器任务开始前：
 
@@ -287,7 +211,7 @@ make down
 
 每轮使用全新的 Exporter 进程，使 Counter、Histogram 和对象关联状态从空状态开始；`--start-at-end` 跳过测试前已有的审计事件，因此无需清空日志或重启 API Server。运行期间发生 kube-apiserver 日志轮转时，Exporter 先读完旧文件尾部，再切换到新的主日志文件。Kueue、Volcano、YuniKorn 分别生成独立 `cluster` 标签。源码不创建 `./logs/kube-apiserver-audit.<scheduler>.log`。Exporter 本轮结束后保持当前参数和 `1` 副本运行，下一轮开始时直接切换标签。
 
-#### 3.9 `test-batch-job-<scheduler>`
+#### 3.4.2 `test-batch-job-<scheduler>`
 
 统一使用：
 
@@ -297,7 +221,7 @@ make down
 
 测试参数继续由 Makefile 传入，Job 只创建在对应测试命名空间。Volcano Agent 模式读取独立的 `agent_job.yaml` 并创建 `batch/v1` Job，Batch 模式继续读取 `batch_job.yaml` 并创建 `batch.volcano.sh/v1alpha1` Job。
 
-### 3.10 `end-<scheduler>`
+### 3.5 `end-<scheduler>`
 
 调整为：
 
@@ -308,7 +232,7 @@ make down
 
 本步骤不再复制或归档 API Server 审计日志。
 
-#### 3.11 `down-<scheduler>`
+#### 3.5.1 `down-<scheduler>`
 
 ##### `down-kueue`
 
@@ -335,7 +259,9 @@ make down
 - 保留 `TestInit` 原地更新后的 `yunikorn-configs`
 - 将全部调度相关 Deployment 设置为 `1` 副本并等待 Ready
 
-### 3.12 `save-result`
+### 3.6 结果保存
+
+#### 3.6.1 `save-result`
 
 删除其中的：
 
@@ -352,7 +278,7 @@ make down
 
 单调度器运行不调用 `save-result`，因此不会替换已有的完整场景目录。
 
-### 3.13 `save-scheduler-result`
+#### 3.6.2 `save-scheduler-result`
 
 每个被选中的调度器完成后，根据 `result-<scheduler>-from-millis` 和 `result-<scheduler>-to-millis` 保存：
 
@@ -365,7 +291,7 @@ make down
 
 结果写入 `results/scenario-<n>/<scheduler>`。Agent 和 Batch 均写入 `results/scenario-<n>/volcano`，场景 1～4 默认表示 Agent、场景 5～8 默认表示 Batch。完整场景运行保存三个调度器目录；单调度器运行只原子替换本轮调度器目录，不修改同场景的其他结果。
 
-### 3.14 顶层 `make down`
+### 3.7 顶层 `make down`
 
 将顶层 `down` 改为固定副本基线收敛入口：
 
@@ -465,16 +391,16 @@ Audit Exporter 的 ServiceMonitor 抓取间隔和超时均为 `100ms`，并保�
 
 八个场景统一更新 `scheduling-perf-relative-s1-s8` ConfigMap 中各自的 JSON。八个 Dashboard 的标签统一为 `benchmark`、`relative-time` 和各自的 `scenario-N`。Dashboard UID 固定为 `perf-relative-s1` 至 `perf-relative-s8`，继续支持 Scheduler 多选和 Grafana 原生时间缩放；原 `perf` Dashboard 不受影响。完整 `make` 全部成功时八个 Dashboard 均刷新为本轮数据，任一场景失败时不会为该失败场景生成配置。
 
-# 附录
+## 附录
 
-## 1. 完整的“提交 VC Job 到创建出 Pod”链路是：
+### 1. VCJob 创建 Pod 的链路
 
 ```
 提交 Volcano Job
   → kube-apiserver
   → Volcano Admission：/jobs/mutate，/jobs/validate
   → 写入 etcd → vc-controller vcjob Informer 发现 Job 
-  → vc-controller初始化 Job Status，执行 Job 插件及通过 kube-apiserver 按需创建 Service、ConfigMap、PVC、PodGroup等资源
+  → vc-controller 初始化 Job Status，执行 Job 插件，并通过 kube-apiserver 按需创建 Service、ConfigMap、PVC、PodGroup 等资源
   → PodGroup Admission：/podgroups/validate
   → 写入 etcd → Volcano scheduler Informer 发现 podgroup
   → Volcano Scheduler 通过 kube-apiserver 将 PodGroup 设置为 Inqueue
@@ -485,7 +411,7 @@ Audit Exporter 的 ServiceMonitor 抓取间隔和超时均为 `100ms`，并保�
   → Pod 创建完成，进入 Pending/等待调度状态
 ```
 
-## 2. 原生 Kubernetes Job 创建 Pod 的流程是：
+### 2. 原生 Kubernetes Job 创建 Pod 的链路
 
 ```
 提交 batch/v1 Job
@@ -498,7 +424,7 @@ Audit Exporter 的 ServiceMonitor 抓取间隔和超时均为 `100ms`，并保�
 → Pod 创建完成，进入 Pending/等待调度状态
 ```
 
-### 原生job + vc-scheduler创建pod流程：
+#### 2.1 原生 Job + Volcano Scheduler
 
 原生 Kubernetes Job 使用 Volcano Scheduler，最基本、最常用的是在 Pod 模板中指定volcano调度器
 
@@ -518,10 +444,10 @@ Volcano 的 PodGroup Controller 会发现这些 Pod，并自动创建 PodGroup�
 → PodGroup 写入 etcd
 → vc-controller 为 Pod 写入 scheduling.k8s.io/group-name Annotation 关联 PodGroup
 → Pod 更新写入 etcd → Volcano Scheduler 通过 Informer 发现更新后的 Pod 和 PodGroup
-→ Volcano Scheduler 将 PodGroup 设置为 Inqueue，并对组内 Pod执行调度和 Binding
+→ Volcano Scheduler 将 PodGroup 设置为 Inqueue，并对组内 Pod 执行调度和 Binding
 ```
 
-**使用vcjob和使用原生job+vc-scheduler哪个创建pod的速度更快呢？**
+##### VCJob 与原生 Job 的创建速度对比
 
 1. 大量 Job、每个 Job 只有 1 个 Pod：原生 Job + `schedulerName: volcano` 通常创建更快。它不需要等待 PodGroup 先进入 `Inqueue`，Job Controller 可以直接创建 Pod。
 
@@ -536,7 +462,7 @@ Volcano 的 PodGroup Controller 会发现这些 Pod，并自动创建 PodGroup�
    | 3/7  | 20 Job × 500 Pod  | VCJob           |
    | 4/8  | 1 Job × 10000 Pod | VCJob，优势明显 |
 
-### 原生job + kueue-controller准入后创建pod流程：
+#### 2.2 原生 Job + Kueue Controller
 
 ```
 提交带 Kueue Queue Label、且 suspend=true 的原生 batch/v1 Job
@@ -544,7 +470,7 @@ Volcano 的 PodGroup Controller 会发现这些 Pod，并自动创建 PodGroup�
 → Admission（内置准入及 Kueue Webhook）
 → 写入 etcd → Kueue Controller 通过 Informer 发现 Job
 → Kueue Controller 根据 Job 创建对应的 Workload
-→ Workload 写入 etcd并进入对应 LocalQueue、ClusterQueue 等待准入
+→ Workload 写入 etcd 并进入对应 LocalQueue、ClusterQueue 等待准入
 → Kueue Controller 检查配额和 ResourceFlavor，将满足条件的 Workload 设置为 Admitted
 → Kueue Controller 更新 Job 并将 suspend 设置为 false
 → Job 更新写入 etcd → kube-controller-manager 的 Job Controller 通过 Informer 发现 Job 已解除挂起
@@ -554,7 +480,7 @@ Volcano 的 PodGroup Controller 会发现这些 Pod，并自动创建 PodGroup�
 → Pod 创建完成，进入 Pending/等待调度状态
 ```
 
-### 原生job + agent-scheduler创建并调度pod流程：
+#### 2.3 原生 Job + Agent Scheduler
 
 AgentScheduler 本身不需要 PodGroup。它采用类似原生 kube-scheduler 的逐 Pod 调度模型，Pod 由 Kubernetes Job Controller 创建，AgentScheduler 负责逐 Pod 调度。
 
@@ -573,7 +499,7 @@ AgentScheduler 本身不需要 PodGroup。它采用类似原生 kube-scheduler �
 → Binding 写入 etcd，Pod 完成调度
 ```
 
-## 3. volcano调度周期
+### 3. Volcano 调度周期
 
 Volcano 一轮调度的核心范围是：
 
@@ -599,7 +525,7 @@ wait.Until(pc.runOnce, pc.schedulePeriod, stopCh)
 
 常驻测试中的 Batch Scheduler 将 `schedule-period` 固定为 `200ms`。Agent Scheduler 不使用该循环，它在 Pod 进入调度队列后由 Worker 事件驱动执行调度，因此不设置对应间隔。
 
-## 4. Volcano Controller分别创建Kubernetes Client和Volcano Client
+### 4. Volcano Controller 的 Kubernetes Client 与 Volcano Client
 
 虽然只有一组启动参数：
 
@@ -630,123 +556,75 @@ QPS/Burst = 1000/1000
 两个令牌桶相互独立，不是共同分享1000 QPS。理论上：
 
 ```
-Kube Client请求上限     ≈ 1000 QPS
-Volcano Client请求上限  ≈ 1000 QPS
+Kube Client 请求上限     ≈ 1000 QPS
+Volcano Client 请求上限  ≈ 1000 QPS
 ```
 
-## 5. volcano使用了reclaim、backfill
+### 5. Volcano 的 reclaim 与 backfill
 
 在场景 2、3 的非 Gang、资源充足且无队列争抢条件下：
 
 - `reclaim` 基本没有实际回收工作，主要增加一次扫描。
 - `backfill` 通常也只产生少量额外遍历。
 
-## 6. pod的删除机制
+### 6. Pod 删除机制
 
-1. 对于job、deployment等资源下的pod删除，通常的流程是：先删除job、deployment等父级资源，其所属的pod再通过k8s garbage collector(k8s 的GC)机制根据ownerReferences删除对应的pod
-2. 对于普通的pod，用户执行kubectl delete pod后，直接请求api-server删除pod。
+- Job、Deployment 等控制器资源被删除后，Kubernetes Garbage Collector 根据 `ownerReferences` 删除所属 Pod。
+- 普通 Pod 由用户直接向 API Server 发起删除请求。
 
-### **这个机制能够解释“场景3+volcano”测试时吞吐波动的原因：**
+#### 6.1 场景 3 的 Volcano 吞吐波动
 
-1. 首先表层的原因是因为vc-job定义了ttl=1，这就导致创建成功的job存活1s后就会被清理，清理的粗略流程如下：
+VCJob 设置 `ttl=1`，完成 1 秒后进入清理流程：
 
-```
-vc-controller 判断 Job TTL 到期并删除 Job`
-→ `kube-controller-manager 的 Garbage Collector 删除所属 Pod`
-→ `API Server 通知 vc-scheduler`
-→ `vc-scheduler 从自己的 cache 移除这些 Pod
-```
-
-2. 当`vc-scheduler`从自己的 cache 移除这些 Pod的时间如果发生在vc-scheduler的调度周期内，就会影响vc-scheduler的调度时间，因为vc-scheduler需要多花一些资源和时间去处理`大量的pod删除通知`。（要知道场景三下，一个job会包含500个pod的，处理这么多的pod的删除通知，确实可能会影响调度）
-
-3. scheduler的处理机制（两条并行流程）
-
-   1. 调度周期：调度周期开始，打开session，执行各种action，调度周期结束；等待调度周期间隔时间；下一轮调度～
-   2. 事件处理：随时接收pod增删通知，并更新scheduler cache。
-
-4. 结论：产生波动的原因就是，vc-scheduler处理`大量的pod删除通知`时，可能会在调度周期，也可能不在调度周期内；如果在，就会影响scheduler的调度时间，如果又发生在“最后一轮session“就可能会导致最后binding的时间被拉长，导致吞吐变小。我们统计吞吐使用的公式是
-
-   ```
-   吞吐 = pod数量 / (最后binding时间 - 第一个binding时间)
-   ```
-
-## 7. podplaystageparallelism=1
-
-**定义**：podplaystageparallelism是kwok控制器推进pod生命周期的并发控制设置
-
-**解释定义**：podplaystageparallelism默认值是4，含义是能最多并行处理4个pod的阶段推进，主要推进的阶段包括：running、succeed、deleted
-
-```
-对应主要推进的阶段
-`pod-ready`：把 Pod 状态更新为 Running，并填写 IP、Conditions、ContainerStatuses。
-`pod-complete`：把 Pod 更新为 Succeeded。
-`pod-delete`：处理 finalizer 并删除 Pod。
+```text
+vc-controller 判断 Job TTL 到期并删除 Job
+→ Kubernetes Garbage Collector 删除所属 Pod
+→ API Server 通知 vc-scheduler
+→ vc-scheduler 从 cache 移除 Pod
 ```
 
-**podplaystageparallelism是怎么影响scheduler调度的**：
+Scheduler 的调度周期和资源事件处理并行进行：前者执行 Session 与 Actions，后者接收 Pod 增删通知并更新 cache。场景 3 中每个 Job 包含 500 个 Pod；集中删除通知与调度周期重叠时，会占用 cache 和运行时资源。若重叠发生在最后一轮 Session，最后一次 binding 可能延后，从而拉长吞吐统计窗口：
 
-1. kwok会更新pod状态(running、succeed、failed、deleted)，scheduler 收到该通知后，会调用updatepod来同步cache中的pod信息，例如如果是pod变成deleted后，scheduler需要额外的处理把cache中的pod移出去，这个过程中会涉及 竞争cache锁、内存分配、CPU cache等。
+```text
+吞吐 = Pod 数量 /（最后 binding 时间 - 第一个 binding 时间）
+```
 
-2. 而scheduler的gomaxprocs设置为32，最大并发goroutine也只有32，如果updatepod发生在scheduler的session期间时，就会和调度相关的goroutine抢占P，主要可观测到的现象就是runnable goroutine等待变多，从而可能会拖慢scheduler的调度。
+### 7. `podPlayStageParallelism=1`
 
-   > 观测结果：runnable goroutine等待时间超过1ms的记为RG，podplaystageparallelism=4（3772）比=1（2132）多了77%左右；
-   >
-   > 结果来自文档<volcano-v1.15.1-scenario3-throughput-variance-report.md "与 `podPlayStageParallelism=4` 的 trace6 对比">
-   >
-   > >  注意：虽然update的事件相关的goroutine一般只有一个，那为什么runnable goroutine等待时间会变多这么多呢？
-   > >
-   > > 虽然 `UpdatePod` 回调通常由一个 informer handler顺序执行，但在 `=4` 时它会更频繁地参与运行：
-   > >
-   > > ```
-   > > UpdatePod处理一个事件
-   > > → 让出或阻塞
-   > > → 再次被唤醒处理下一个事件
-   > > → 与调度worker交替执行
-   > > ```
+#### 7.1 定义与作用
 
-**podplaystageparallelism会导致波动**
+`podPlayStageParallelism` 控制 KWOK 同时推进 Pod 生命周期阶段的数量，默认值为 `4`。主要阶段包括：
 
-scheduler的session期间发生updatepod的数量是有波动的，甚至会在10 ～ 1000的范围内波动，这就导致调度耗时、吞吐和尾延迟发生波动；
+- `pod-ready`：将 Pod 更新为 Running，并填写 IP、Conditions 和 ContainerStatuses。
+- `pod-complete`：将 Pod 更新为 Succeeded。
+- `pod-delete`：处理 finalizer 并删除 Pod。
 
-> scheduler的session期间发生updatepod的数量这个通常没有办法控制，
->
-> 1. go的goroutine没有优先级，每次调度运行时都是排队进行，所以有一定的随机性
+#### 7.2 对 Scheduler 的影响
 
-**podplaystageparallelism=1会减小波动**
+KWOK 更新 Pod 状态后，Scheduler 通过 `UpdatePod` 同步 cache。状态更新集中发生时，会与调度路径竞争 cache 锁、CPU、内存分配和 Go Runtime 调度资源。
 
-设置为1后，只能并行处理一个pod的阶段推进，这会显著减少 kwok 对pod的状态更新速度，从而在session窗口内updatepod的数量也会变得少很多，这样即使出现波动，那么波动的范围也是在有限的可控范围内的
+当前服务器为 32 核，Scheduler 的 `GOMAXPROCS=32`。观测中将 runnable goroutine 等待超过 1ms 记为 RG：`podPlayStageParallelism=4` 时为 3772，设置为 `1` 时为 2132，前者高约 77%。结果来自 `volcano-v1.15.1-scenario3-throughput-variance-report.md` 中与 trace6 的对比。
 
-**podplaystageparallelism=1会影响我们关心的调度过程吗**
+Pod informer 通常顺序调用 `UpdatePod`，事件增加并不代表同时创建大量回调 goroutine；但并发值较高时，处理链会更频繁地被唤醒并与调度 worker 交替运行。
 
-并不会，我们针对所有阶段一一展开说明
+#### 7.3 减小波动的原因
 
-1. kwok更新pod的running状态，这种情况的发生过程是这样的：在scheduler的action中，pod被更新为binding状态后，然后向api-server发送bind请求，这个bind请求是异步发生的，api-server收到请求后写入 `Pod.spec.nodeName`并持久化到etcd，scheduler 收到Pod 更新，**执行 UpdatePod，更新scheduler cache，把task更新到bound**。KWOK 观察到 Pod.spec.nodeName 已写入后，按 pod-ready stage 将 Pod 状态推进为 Running，scheduler收到pod更新为running的通知，**执行updatepod，更新scheduler cache，把task更新到running**；
-   重要的是，**scheduler 进入 `Binding` 后，就已经把它从后续调度候选中排除**，并继续处理其他 Pod；它不会等待 Bind API 返回，更不会等待 KWOK 更新 `Running`。所以也不会影响scheduler对pod状态的判断。
-2. kwok更新pod的succeed状态，发生在已binding、已 Running 的 Pod 后续生命周期，所以不影响该 Pod 的选点
-3. kwok更新pod的failed、deleted状态，这些不在正常调度内考虑范围。
+每个 Session 内的 `UpdatePod` 数量可能在 10～1000 之间波动。Go goroutine 没有业务优先级，事件处理与调度任务的交错具有随机性，因此会影响调度耗时、吞吐和尾延迟。
 
-但是可能会影响pod complete、job complete等，这个我们可以暂时不考虑
+将 `podPlayStageParallelism` 设置为 `1` 后，KWOK 同一时间只推进一个 Pod 阶段，状态更新更均匀，Session 内 `UpdatePod` 的数量和波动范围随之减小。
 
-**最后的说明**
+#### 7.4 对调度正确性的影响
 
-我们使用的机器的CPU当前是32核，所以gomaxprocs最大只能设置为32；如果未来使用更多物理CPU，并同步提高scheduler的CPU limit和GOMAXPROCS，可能进一步降低UpdatePod与调度goroutine之间的运行时竞争；但当前实验表明主要改善来自将KWOK状态更新摊平，尚不能证明GOMAXPROCS=32是主要瓶颈，也不能断定设置为64后影响会基本消失。
+- Scheduler 将 Pod 标记为 Binding 后便从后续调度候选中排除，并异步发送 Bind 请求；它不会等待 KWOK 将 Pod 更新为 Running。
+- Succeeded 发生在 Pod 已完成 Binding 和 Running 之后，不影响节点选择。
+- Failed 和 Deleted 不属于正常调度选点路径。
 
-> 为什么GOMAXPROCS=64核也不一定有效
->
-> 1. 因为从实验结果来看所以存在runnable goroutine的排队，但是即使是排队时仍存在idle P；
->
-> 2. 更多 `UpdatePod` 事件不等于同时产生更多 `UpdatePod` goroutine。Pod informer 通常由一个事件处理链顺序调用 `UpdatePod`，事件多主要形成连续处理或积压，而不是上千个 `UpdatePod` goroutine同时争抢 32 个 P。
-> 3. `UpdatePod` 还会涉及 scheduler cache 锁、内存分配、CPU cache 和 Go runtime 干扰。这些串行或共享路径不能通过把 `GOMAXPROCS` 从 32 提高到 64直接消除。
->    1. cache锁：等待共享资源，例如
->       1. **创建 session 时的 `Snapshot()`**
->          每轮 session 开始前，scheduler 要锁住 cache，复制 Jobs、Tasks、Nodes、Queues 等数据形成快照。
->          如果 `UpdatePod` 正在持锁，`Snapshot()` 就要等待；反过来，大规模 Snapshot 期间 `UpdatePod` 也要等待。
->       2. **`AddBindTask()`**
->          Pod 选中节点后，scheduler 要锁住 cache，把 Task 标记为 `Binding`、加入目标 Node，并放进 Bind 队列。
->          这和 `UpdatePod` 使用同一把锁，因此集中到来的状态更新可能推迟 Task 进入 Binding 流程。
->          提醒：通常不是同一个 Task，也仍会竞争同一把锁
->    2. 内存分配：增加分配和GC工作；`UpdatePod` 通常会重新构造 `TaskInfo`、更新 map、复制部分 Pod/资源信息，产生内存分配。大量更新集中发生时，会增加 allocator 和 GC assist 工作，使正在执行 Predicate/Prioritize 的 goroutine也分担部分内存回收成本。
->    3. CPU cache：是 goroutine虽然能运行，但每次运行的效率降低。`UpdatePod` 与调度热循环交替运行，会反复读写不同内存区域，可能挤出 Predicate/Prioritize 正在使用的 CPU cache 数据。
->    4. Go runtime：Go runtime需要调度这些 goroutine、维护运行队列并进行 work stealing，使调度热路径的单位执行成本发生变化。
+该设置可能影响 Pod 或 Job 完成状态出现的时间，但不改变本文关注的选点与 Binding 过程。
 
-## 8
+#### 7.5 `GOMAXPROCS` 限制
+
+增加物理 CPU、Scheduler CPU limit 和 `GOMAXPROCS` 可能缓解竞争，但现有结果只能证明将 KWOK 状态更新摊平带来了主要改善，不能证明 `GOMAXPROCS=32` 是唯一瓶颈。即使提高到 64，以下共享路径仍然存在：
+
+- `UpdatePod`、Session `Snapshot()` 和 `AddBindTask()` 竞争同一 Scheduler cache 锁。
+- `TaskInfo` 重建、map 更新和对象复制会增加内存分配与 GC assist。
+- 事件处理与调度热循环交替运行会干扰 CPU cache，并增加 Go Runtime 调度和 work stealing 成本。
