@@ -10,15 +10,14 @@
 | --------------- | -------------------------------- | ----------------- | --------------------------------------------------------- | ------------------------------------------------- | ------------------------ |
 | Kueue 非 Gang   | `kube-scheduler`                 | `500m / 8`        | `1000/1000`                                               | /                                                 | 事件驱动，无固定调度周期 |
 | Kueue 准入      | `kueue-controller-manager`       | `500m / 8`        | `1000/1000`                                               | job、workload等worker均为100                      |                          |
+| kueue           | kube-controller-manager          | `500m / 8`        | `1000/1000`                                               | Job Controller Worker=100                         |                          |
 | Kueue Gang      | `coscheduling`，实际调度 Pod     | `500m / 8`        | `1000/1000`                                               | /                                                 | 事件驱动，无固定调度周期 |
-| Kueue Gang 辅助 | `scheduler-plugins-controller`   | `500m / 8`        | `1000/1000`（使用包含上游修复的 `v0.34.7-qpsfix`）        | workers=100                                       |                          |
+| Kueue Gang 辅助 | `scheduler-plugins-controller`   | `500m / 8`        | `1000/1000`                                               | workers=100                                       |                          |
 | Volcano         | Scheduler、Controller、Admission | `500m / 8`        | `1000/1000`（controller 中配置 volcano client 1000/1000） | Controller 的 Job、GC、PodGroup Worker 均为 100； | 200ms (是默认值1s)       |
 | YuniKorn        | Scheduler                        | `500m / 8`        | `1000/1000`                                               | /                                                 | 200ms (是默认值1s)       |
 | YuniKorn        | Admission Controller             | `500m / 8`        | `1000/1000`                                               | /                                                 |                          |
 | YuniKorn        | kube-controller-manager          | `500m / 8`        | `1000/1000`                                               | Job Controller Worker=100                         |                          |
 
-> Scheduler Node Worker=20 表示 Volcano Scheduler 启动 20 个 Go worker，并发消费 Node 事件队列，把节点新增、更新、删除等变化同步到调度器缓存中
->
 > Job Controller Worker=100 表示 启动 100 个并发 worker，最多同时协调约 100 个不同的 Kubernetes Job
 
 ### volcano配置
