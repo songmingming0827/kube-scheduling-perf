@@ -4,8 +4,8 @@ set -o errexit
 set -o nounset
 set -o pipefail
 
-if [[ "$#" -ne 4 ]]; then
-  printf 'usage: %s REPOSITORY SCENARIO SCHEDULER RUN_WORKSPACE\n' "$0" >&2
+if [[ "$#" -lt 4 || "$#" -gt 5 ]]; then
+  printf 'usage: %s REPOSITORY SCENARIO SCHEDULER RUN_WORKSPACE [VOLCANO_MODE]\n' "$0" >&2
   exit 2
 fi
 
@@ -13,6 +13,7 @@ repository="$1"
 scenario="$2"
 scheduler="$3"
 run_workspace="$4"
+volcano_mode="${5:-auto}"
 
 case "${scenario}" in
   1|2|3|4|5|6|7|8) ;;
@@ -23,6 +24,33 @@ case "${scheduler}" in
   kueue|volcano|yunikorn) ;;
   *) printf 'scheduler must be kueue, volcano, or yunikorn\n' >&2; exit 2 ;;
 esac
+
+case "${volcano_mode}" in
+  auto|agent|batch) ;;
+  *) printf 'VOLCANO_MODE must be auto, agent, or batch\n' >&2; exit 2 ;;
+esac
+
+if [[ "${scheduler}" != "volcano" && "${volcano_mode}" != "auto" ]]; then
+  printf 'VOLCANO_MODE may only be selected when scheduler is volcano\n' >&2
+  exit 2
+fi
+
+if [[ "${scheduler}" == "volcano" && "${volcano_mode}" == "agent" ]]; then
+  case "${scenario}" in
+    5|6|7|8)
+      printf 'VOLCANO_MODE=agent does not support the GANG=true setting in scenarios 5 through 8\n' >&2
+      exit 2
+      ;;
+  esac
+fi
+
+effective_volcano_mode="${volcano_mode}"
+if [[ "${scheduler}" == "volcano" && "${volcano_mode}" == "auto" ]]; then
+  case "${scenario}" in
+    1|2|3|4) effective_volcano_mode="agent" ;;
+    5|6|7|8) effective_volcano_mode="batch" ;;
+  esac
+fi
 
 if [[ ! -d "${repository}/.git" ]]; then
   printf 'repository is not a Git checkout: %s\n' "${repository}" >&2
@@ -65,9 +93,10 @@ git pull --ff-only origin master
 
 TZ=Asia/Shanghai date '+%Y-%m-%d %H:%M:%S' >"${run_workspace}/started-cst.txt"
 git rev-parse HEAD >"${run_workspace}/tested-commit.txt"
+printf 'requested=%s\neffective=%s\n' "${volcano_mode}" "${effective_volcano_mode}" >"${run_workspace}/volcano-mode.txt"
 
 set +o errexit
-make "scenario-${scenario}" SCHEDULERS="${scheduler}" 2>&1 | timestamp_stream | tee "${run_workspace}/make.log"
+make "scenario-${scenario}" SCHEDULERS="${scheduler}" VOLCANO_MODE="${volcano_mode}" 2>&1 | timestamp_stream | tee "${run_workspace}/make.log"
 make_status="${PIPESTATUS[0]}"
 printf '%s\n' "${make_status}" >"${run_workspace}/make-exit-code.txt"
 
@@ -84,7 +113,12 @@ if [[ "${make_status}" -eq 0 && "${down_status}" -eq 0 ]]; then
   publish_status="$?"
   if [[ "${publish_status}" -eq 0 ]]; then
     run_stamp="$(TZ=Asia/Shanghai date '+%m%d%H%M%S')"
-    git commit -m "results: scenario ${scenario} ${scheduler} single test ${run_stamp}"
+    if [[ "${scheduler}" == "volcano" ]]; then
+      commit_subject="results: scenario ${scenario} ${scheduler} ${effective_volcano_mode} single test ${run_stamp}"
+    else
+      commit_subject="results: scenario ${scenario} ${scheduler} single test ${run_stamp}"
+    fi
+    git commit -m "${commit_subject}"
     publish_status="$?"
   fi
   if [[ "${publish_status}" -eq 0 ]]; then
