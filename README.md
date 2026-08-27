@@ -162,6 +162,7 @@ Use this when a scheduler run is interrupted. The target enables all scheduler c
 | `QUEUES_SIZE` | `1` | Number of benchmark queues |
 | `JOBS_SIZE_PER_QUEUE` | `1` | Jobs created in each queue |
 | `PODS_SIZE_PER_JOB` | `1` | Pods created by each job |
+| `SUBMIT_CONCURRENCY` | `50` | Maximum concurrent Job submissions |
 | `CPU_REQUEST_PER_POD` | `1` | CPU request per pod |
 | `MEMORY_REQUEST_PER_POD` | `1Gi` | Memory request per pod |
 | `CPU_PER_QUEUE` | `10000` | Queue CPU capacity |
@@ -172,6 +173,8 @@ Use this when a scheduler run is interrupted. The target enables all scheduler c
 | `CLEANUP_TIMEOUT_SECONDS` | `600` | Maximum confirmation wait for Kueue namespaced cleanup |
 
 Additional impacting and critical workload variables are defined at the top of the [Makefile](Makefile).
+
+The benchmark submission client uses Kubernetes client QPS/Burst `1000/2000`. Job manifests are rendered serially and submitted through a bounded worker pool controlled by `SUBMIT_CONCURRENCY`.
 
 ## Existing Cluster
 

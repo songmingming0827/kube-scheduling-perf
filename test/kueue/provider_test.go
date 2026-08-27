@@ -101,20 +101,27 @@ func (p *KueueProvider) AddJobs(ctx context.Context) error {
 		if step.delay > 0 {
 			time.Sleep(step.delay)
 		}
-		for i := range step.queueSize {
-			for range step.jobsPerQueue {
-				err := p.addSingleJobs(ctx, step.podsPerJob, i, step.priority, step.duration)
-				if err != nil {
-					return err
+		err := utils.SubmitConcurrently(ctx, p.SubmitConcurrency, func(yield func(string) error) error {
+			for i := range step.queueSize {
+				for range step.jobsPerQueue {
+					if err := yield(p.renderSingleJob(step.podsPerJob, i, step.priority, step.duration)); err != nil {
+						return err
+					}
 				}
 			}
+			return nil
+		}, func(ctx context.Context, job string) error {
+			return decoder.DecodeEach(ctx, strings.NewReader(job), decoder.CreateHandler(utils.Resources))
+		})
+		if err != nil {
+			return err
 		}
 	}
 	return nil
 }
 
-func (p *KueueProvider) addSingleJobs(ctx context.Context, podSize int, queueIndex int, priority string, duration string) error {
-	return decoder.DecodeEach(ctx, strings.NewReader(utils.YamlWithArgs(batchJobYaml, map[string]any{
+func (p *KueueProvider) renderSingleJob(podSize int, queueIndex int, priority string, duration string) string {
+	return utils.YamlWithArgs(batchJobYaml, map[string]any{
 		"name":                fmt.Sprintf("%s-%d", priority, queueIndex),
 		"queue":               fmt.Sprintf("default-local-queue-%s-%d", priority, queueIndex),
 		"size":                podSize,
@@ -125,5 +132,5 @@ func (p *KueueProvider) addSingleJobs(ctx context.Context, podSize int, queueInd
 		"priority":            priority,
 		"preemption":          p.Preemption,
 		"duration":            duration,
-	})), decoder.CreateHandler(utils.Resources))
+	})
 }
