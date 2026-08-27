@@ -613,40 +613,74 @@ Scheduler 的调度周期和资源事件处理并行进行：前者执行 Sessio
 
 ### 7. `podPlayStageParallelism=1`
 
-#### 7.1 定义与作用
+**定义**：podplaystageparallelism是kwok控制器推进pod生命周期的并发控制设置
 
-`podPlayStageParallelism` 控制 KWOK 同时推进 Pod 生命周期阶段的数量，默认值为 `4`。主要阶段包括：
+**解释定义**：podplaystageparallelism默认值是4，含义是能最多并行处理4个pod的阶段推进，主要推进的阶段包括：running、succeed、deleted
 
-- `pod-ready`：将 Pod 更新为 Running，并填写 IP、Conditions 和 ContainerStatuses。
-- `pod-complete`：将 Pod 更新为 Succeeded。
-- `pod-delete`：处理 finalizer 并删除 Pod。
+```
+对应主要推进的阶段
+`pod-ready`：把 Pod 状态更新为 Running，并填写 IP、Conditions、ContainerStatuses。
+`pod-complete`：把 Pod 更新为 Succeeded。
+`pod-delete`：处理 finalizer 并删除 Pod。
+```
 
-#### 7.2 对 Scheduler 的影响
+**podplaystageparallelism是怎么影响scheduler调度的**：
 
-KWOK 更新 Pod 状态后，Scheduler 通过 `UpdatePod` 同步 cache。状态更新集中发生时，会与调度路径竞争 cache 锁、CPU、内存分配和 Go Runtime 调度资源。
+1. kwok会更新pod状态(running、succeed、failed、deleted)，scheduler 收到该通知后，会调用updatepod来同步cache中的pod信息，例如如果是pod变成deleted后，scheduler需要额外的处理把cache中的pod移出去，这个过程中会涉及 竞争cache锁、内存分配、CPU cache等。
 
-当前服务器为 32 核，Scheduler 的 `GOMAXPROCS=32`。观测中将 runnable goroutine 等待超过 1ms 记为 RG：`podPlayStageParallelism=4` 时为 3772，设置为 `1` 时为 2132，前者高约 77%。结果来自 `volcano-v1.15.1-scenario3-throughput-variance-report.md` 中与 trace6 的对比。
+2. 而scheduler的gomaxprocs设置为32，最大并发goroutine也只有32，如果updatepod发生在scheduler的session期间时，就会和调度相关的goroutine抢占P，主要可观测到的现象就是runnable goroutine等待变多，从而可能会拖慢scheduler的调度。
 
-Pod informer 通常顺序调用 `UpdatePod`，事件增加并不代表同时创建大量回调 goroutine；但并发值较高时，处理链会更频繁地被唤醒并与调度 worker 交替运行。
+   > 观测结果：runnable goroutine等待时间超过1ms的记为RG，podplaystageparallelism=4（3772）比=1（2132）多了77%左右；
+   >
+   > 结果来自文档<volcano-v1.15.1-scenario3-throughput-variance-report.md "与 `podPlayStageParallelism=4` 的 trace6 对比">
+   >
+   > > 注意：虽然update的事件相关的goroutine一般只有一个，那为什么runnable goroutine等待时间会变多这么多呢？
+   > >
+   > > 虽然 `UpdatePod` 回调通常由一个 informer handler顺序执行，但在 `=4` 时它会更频繁地参与运行：
+   > >
+   > > ```
+   > > UpdatePod处理一个事件
+   > > → 让出或阻塞
+   > > → 再次被唤醒处理下一个事件
+   > > → 与调度worker交替执行
+   > > ```
+   > >
+   > > 
 
-#### 7.3 减小波动的原因
+**podplaystageparallelism会导致波动**
 
-每个 Session 内的 `UpdatePod` 数量可能在 10～1000 之间波动。Go goroutine 没有业务优先级，事件处理与调度任务的交错具有随机性，因此会影响调度耗时、吞吐和尾延迟。
+scheduler的session期间发生updatepod的数量是有波动的，甚至会在10 ～ 1000的范围内波动，这就导致调度耗时、吞吐和尾延迟发生波动；
 
-将 `podPlayStageParallelism` 设置为 `1` 后，KWOK 同一时间只推进一个 Pod 阶段，状态更新更均匀，Session 内 `UpdatePod` 的数量和波动范围随之减小。
+> scheduler的session期间发生updatepod的数量这个通常没有办法控制，
+>
+> 1. go的goroutine没有优先级，每次调度运行时都是排队进行，所以有一定的随机性
 
-#### 7.4 对调度正确性的影响
+**podplaystageparallelism=1会减小波动**
 
-- Scheduler 将 Pod 标记为 Binding 后便从后续调度候选中排除，并异步发送 Bind 请求；它不会等待 KWOK 将 Pod 更新为 Running。
-- Succeeded 发生在 Pod 已完成 Binding 和 Running 之后，不影响节点选择。
-- Failed 和 Deleted 不属于正常调度选点路径。
+设置为1后，只能并行处理一个pod的阶段推进，这会显著减少 kwok 对pod的状态更新速度，从而在session窗口内updatepod的数量也会变得少很多，这样即使出现波动，那么波动的范围也是在有限的可控范围内的
 
-该设置可能影响 Pod 或 Job 完成状态出现的时间，但不改变本文关注的选点与 Binding 过程。
+**podplaystageparallelism=1会影响我们关心的调度过程吗**
 
-#### 7.5 `GOMAXPROCS` 限制
+并不会，我们针对所有阶段一一展开说明
 
-增加物理 CPU、Scheduler CPU limit 和 `GOMAXPROCS` 可能缓解竞争，但现有结果只能证明将 KWOK 状态更新摊平带来了主要改善，不能证明 `GOMAXPROCS=32` 是唯一瓶颈。即使提高到 64，以下共享路径仍然存在：
+1. kwok更新pod的running状态，这种情况的发生过程是这样的：在scheduler的action中，pod被更新为binding状态后，然后向api-server发送bind请求，这个bind请求是异步发生的，api-server收到请求后写入 `Pod.spec.nodeName`并持久化到etcd，scheduler 收到Pod 更新，**执行 UpdatePod，更新scheduler cache，把task更新到bound**。KWOK 观察到 Pod.spec.nodeName 已写入后，按 pod-ready stage 将 Pod 状态推进为 Running，scheduler收到pod更新为running的通知，**执行updatepod，更新scheduler cache，把task更新到running**； 重要的是，**scheduler 进入 `Binding` 后，就已经把它从后续调度候选中排除**，并继续处理其他 Pod；它不会等待 Bind API 返回，更不会等待 KWOK 更新 `Running`。所以也不会影响scheduler对pod状态的判断。
+2. kwok更新pod的succeed状态，发生在已binding、已 Running 的 Pod 后续生命周期，所以不影响该 Pod 的选点
+3. kwok更新pod的failed、deleted状态，这些不在正常调度内考虑范围。
 
-- `UpdatePod`、Session `Snapshot()` 和 `AddBindTask()` 竞争同一 Scheduler cache 锁。
-- `TaskInfo` 重建、map 更新和对象复制会增加内存分配与 GC assist。
-- 事件处理与调度热循环交替运行会干扰 CPU cache，并增加 Go Runtime 调度和 work stealing 成本。
+但是可能会影响pod complete、job complete等，这个我们可以暂时不考虑
+
+**最后的说明**
+
+我们使用的机器的CPU当前是32核，所以gomaxprocs最大只能设置为32；如果未来使用更多物理CPU，并同步提高scheduler的CPU limit和GOMAXPROCS，可能进一步降低UpdatePod与调度goroutine之间的运行时竞争；但当前实验表明主要改善来自将KWOK状态更新摊平，尚不能证明GOMAXPROCS=32是主要瓶颈，也不能断定设置为64后影响会基本消失。
+
+> 为什么GOMAXPROCS=64核也不一定有效
+>
+> 1. 因为从实验结果来看所以存在runnable goroutine的排队，但是即使是排队时仍存在idle P；
+> 2. 更多 `UpdatePod` 事件不等于同时产生更多 `UpdatePod` goroutine。Pod informer 通常由一个事件处理链顺序调用 `UpdatePod`，事件多主要形成连续处理或积压，而不是上千个 `UpdatePod` goroutine同时争抢 32 个 P。
+> 3. `UpdatePod` 还会涉及 scheduler cache 锁、内存分配、CPU cache 和 Go runtime 干扰。这些串行或共享路径不能通过把 `GOMAXPROCS` 从 32 提高到 64直接消除。
+>    1. cache锁：等待共享资源，例如
+>       1. **创建 session 时的 `Snapshot()`** 每轮 session 开始前，scheduler 要锁住 cache，复制 Jobs、Tasks、Nodes、Queues 等数据形成快照。 如果 `UpdatePod` 正在持锁，`Snapshot()` 就要等待；反过来，大规模 Snapshot 期间 `UpdatePod` 也要等待。
+>       2. **`AddBindTask()`** Pod 选中节点后，scheduler 要锁住 cache，把 Task 标记为 `Binding`、加入目标 Node，并放进 Bind 队列。 这和 `UpdatePod` 使用同一把锁，因此集中到来的状态更新可能推迟 Task 进入 Binding 流程。 提醒：通常不是同一个 Task，也仍会竞争同一把锁
+>    2. 内存分配：增加分配和GC工作；`UpdatePod` 通常会重新构造 `TaskInfo`、更新 map、复制部分 Pod/资源信息，产生内存分配。大量更新集中发生时，会增加 allocator 和 GC assist 工作，使正在执行 Predicate/Prioritize 的 goroutine也分担部分内存回收成本。
+>    3. CPU cache：是 goroutine虽然能运行，但每次运行的效率降低。`UpdatePod` 与调度热循环交替运行，会反复读写不同内存区域，可能挤出 Predicate/Prioritize 正在使用的 CPU cache 数据。
+>    4. Go runtime：Go runtime需要调度这些 goroutine、维护运行队列并进行 work stealing，使调度热路径的单位执行成本发生变化。
