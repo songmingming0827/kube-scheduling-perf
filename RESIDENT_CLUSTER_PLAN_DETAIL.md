@@ -207,6 +207,8 @@ make down
 
 `TestInit` 不再创建 Node。
 
+Kueue、Volcano 和 YuniKorn 均在 `TestInit` 完成后固定等待 `5` 秒，让目标组件和实验配置稳定，再进入 Job 提交阶段。
+
 ### 3.4 `start-<scheduler>`
 
 保留现有执行结构：

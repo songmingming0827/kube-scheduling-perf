@@ -179,10 +179,8 @@ prepare-$(1):
 	make up-$(1)
 	make wait-$(1)
 	make test-init-$(1)
-	@if test "$(1)" = "volcano"; then \
-		echo "Waiting 5 seconds for Volcano components to stabilize"; \
-		sleep 5; \
-	fi
+	@echo "Waiting 5 seconds for $(1) components to stabilize"
+	@sleep 5
 
 .PHONY: start-$(1)
 start-$(1):
