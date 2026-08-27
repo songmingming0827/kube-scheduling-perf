@@ -81,7 +81,8 @@
 
 ![job-submission](results/scenario-3/job-submission.png)
 
-- volcano**创建**pod速度比场景2更快
+- volcano在场景2和场景3两种情况下的调度速度几乎是不变的 - 15s左右；而kueue从场景2的15s左右时间 -> 场景3的10s左右时间
+  - 场景3 Kueue 要处理 500 个 Workload 的准入，场景2只用20个
   
 
 ### 场景4
@@ -90,7 +91,11 @@
 
 ![job-submission](results/scenario-4/job-submission.png)
 
-- **Volcano调度速度，创建速度几乎不变；**
+- kube-controller创建pod速度存在瓶颈
+
+  - 三者创建pod的controller都是kube-controller，**环境设置：**job-controller worker为100；1. 单个 Job 每次同步最多创建 `500` 个 Pod。2. 同一个 Job key 不会被多个 worker 同时处理。3. Pod 事件触发的下一轮 Job 同步有 `1s` 批处理周期。
+  - 场景 3 有 20 个独立 Job key，每个 Job 正好只需要一轮 500 Pod。
+  - 场景 4 只有一个 Job key，需要 `10000 / 500 = 20` 轮同步。从首轮到末轮约有 19 个一秒间隔，实测正好约 19.1–19.5 秒。
 
   
 
