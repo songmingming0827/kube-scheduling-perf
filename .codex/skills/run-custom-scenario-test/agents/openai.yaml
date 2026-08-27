@@ -1,0 +1,4 @@
+interface:
+  display_name: "运行自定义小规模性能测试"
+  short_description: "在常驻集群运行单调度器 scenario-custom 性能测试"
+  default_prompt: "使用 $run-custom-scenario-test 按默认参数运行一次小规模单调度器性能测试。"

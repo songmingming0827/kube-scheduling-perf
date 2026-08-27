@@ -103,6 +103,28 @@ The default target runs these eight scenarios:
 
 The complete matrix contains 24 `TestBatchJob` cases.
 
+#### Run a Custom Single-Scheduler Scenario
+
+`scenario-custom` reuses the same prepare, test, metrics, cleanup, and result-saving flow as the numbered scenarios, but runs exactly one scheduler and does not generate a relative Dashboard. Its defaults run the Volcano Batch Scheduler with 50 Jobs, 16 task replicas per Job, and non-Gang scheduling:
+
+```bash
+make scenario-custom
+```
+
+All custom defaults can be overridden from the command line. For example:
+
+```bash
+make scenario-custom \
+  SCHEDULERS=volcano \
+  VOLCANO_MODE=batch \
+  JOBS_SIZE_PER_QUEUE=100 \
+  PODS_SIZE_PER_JOB=8 \
+  GANG=true \
+  TEST_TIMEOUT_SECONDS=600
+```
+
+The result is written to `results/scenario-custom/` and replaces the previous custom result. Numbered scenario results are not modified. `SCHEDULERS` must contain exactly one of `kueue`, `volcano`, or `yunikorn`.
+
 The latest validated run completed all 24 cases successfully in `44m51.248s` (`2026-08-11 12:05:35` to `2026-08-11 12:50:26` CST). Audit Exporter and the Grafana dashboards used a `100ms` sampling/query step, and all 24 Prometheus capture barriers passed. Exact scenario and scheduler timestamps are recorded in [RESIDENT_CLUSTER_FULL_TEST_REPORT.md](RESIDENT_CLUSTER_FULL_TEST_REPORT.md#21-100ms-采集与单相对面板归档完整测试通过).
 
 #### 4. View Results

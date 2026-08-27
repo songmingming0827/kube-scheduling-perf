@@ -149,6 +149,25 @@ scenario-8:
 		GANG=true \
 		QUEUES_SIZE=1  JOBS_SIZE_PER_QUEUE=1      PODS_SIZE_PER_JOB=10000
 
+.PHONY: scenario-custom
+scenario-custom: SCHEDULERS = volcano
+scenario-custom: VOLCANO_MODE = batch
+scenario-custom: QUEUES_SIZE = 1
+scenario-custom: JOBS_SIZE_PER_QUEUE = 50
+scenario-custom: PODS_SIZE_PER_JOB = 16
+scenario-custom: GANG = false
+scenario-custom: TEST_TIMEOUT_SECONDS = 300
+scenario-custom:
+	$(MAKE) serial-test \
+		RELATIVE_DASHBOARD_SCENARIO=custom \
+		SCHEDULERS="$(SCHEDULERS)" \
+		VOLCANO_MODE="$(VOLCANO_MODE)" \
+		QUEUES_SIZE="$(QUEUES_SIZE)" \
+		JOBS_SIZE_PER_QUEUE="$(JOBS_SIZE_PER_QUEUE)" \
+		PODS_SIZE_PER_JOB="$(PODS_SIZE_PER_JOB)" \
+		GANG="$(GANG)" \
+		TEST_TIMEOUT_SECONDS="$(TEST_TIMEOUT_SECONDS)"
+
 .PHONY: ensure-directories
 ensure-directories:
 	./hack/ensure-directories.sh
@@ -488,9 +507,15 @@ down:
 .PHONY: validate-result-scenario
 validate-result-scenario:
 	@case "$(RELATIVE_DASHBOARD_SCENARIO)" in \
-		1|2|3|4|5|6|7|8) ;; \
-		*) echo 'RELATIVE_DASHBOARD_SCENARIO must be an integer from 1 to 8' >&2; exit 1;; \
+		1|2|3|4|5|6|7|8|custom) ;; \
+		*) echo 'RELATIVE_DASHBOARD_SCENARIO must be an integer from 1 to 8, or custom' >&2; exit 1;; \
 	esac
+	@if test "$(RELATIVE_DASHBOARD_SCENARIO)" = custom; then \
+		case "$(strip $(SCHEDULERS))" in \
+			kueue|volcano|yunikorn) ;; \
+			*) echo 'scenario-custom requires exactly one scheduler: kueue, volcano, or yunikorn' >&2; exit 1;; \
+		esac; \
+	fi
 
 .PHONY: validate-volcano-mode
 validate-volcano-mode:
@@ -528,6 +553,11 @@ serial-test: validate-result-scenario validate-volcano-mode ensure-directories
 	$(foreach sched,$(SCHEDULERS), \
 		$(MAKE) save-scheduler-result SCHEDULER=$(sched) SCENARIO=$(RELATIVE_DASHBOARD_SCENARIO); \
 	)
+	@if test "$(RELATIVE_DASHBOARD_SCENARIO)" = custom; then \
+		target="./results/scenario-custom"; \
+		echo $(TEST_ENVS) > "$$target/envs.txt"; \
+		printf 'from=%s\nto=%s\n' "$$(cat ./tmp/result-from-millis)" "$$(cat ./tmp/result-to-millis)" > "$$target/result-window.txt"; \
+	fi
 	@for sched in $(SCHEDULERS); do \
 		rm -f "./tmp/result-$$sched-from-millis" "./tmp/result-$$sched-to-millis" \
 			"./tmp/result-$$sched-audit-from-inode" "./tmp/result-$$sched-audit-from-bytes" \
@@ -553,8 +583,8 @@ update-relative-dashboard:
 .PHONY: save-scheduler-result
 save-scheduler-result:
 	@case "$(SCENARIO)" in \
-		1|2|3|4|5|6|7|8) ;; \
-		*) echo 'SCENARIO must be an integer from 1 to 8' >&2; exit 1;; \
+		1|2|3|4|5|6|7|8|custom) ;; \
+		*) echo 'SCENARIO must be an integer from 1 to 8, or custom' >&2; exit 1;; \
 	esac
 	@case "$(SCHEDULER)" in \
 		kueue|volcano|yunikorn) ;; \

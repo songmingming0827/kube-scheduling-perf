@@ -64,6 +64,28 @@ results/scenario-2/volcano/
 
 `scenario-1` 至 `scenario-8` 分别对应八个固定场景。运行异常中断后执行 `make down` 恢复常驻集群基线。
 
+### 2.4 单场景、单调度器运行用于性能测试
+
+场景自定义，例如使用volcano调度器运行（如不指定参数，如下参数也是默认参数）
+
+```
+make scenario-custom \
+  SCHEDULERS=volcano \
+  VOLCANO_MODE=batch \
+  JOBS_SIZE_PER_QUEUE=50 \
+  PODS_SIZE_PER_JOB=16 \
+  GANG=false \
+  TEST_TIMEOUT_SECONDS=300
+```
+
+该场景运行也不更新三调度器相对 Dashboard，也不覆盖已有的完整对比结果。结果独立写入如下目录，重复运行只覆盖 `scenario-custom`，不影响 scenario-1～8。
+
+```
+results/scenario-custom/envs.txt
+results/scenario-custom/result-window.txt
+results/scenario-custom/volcano/report.txt
+```
+
 ## 3. Makefile 方案细节
 
 ### 3.1 常驻集群参数
