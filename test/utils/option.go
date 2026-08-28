@@ -14,11 +14,10 @@ type Options struct {
 	CpuLendingLimit    string
 	MemoryLendingLimit string
 
-	QueueSize         int
-	JobsSizePerQueue  int
-	PodsSizePerJob    int
-	SubmitConcurrency int
-	PodDuration       string
+	QueueSize        int
+	JobsSizePerQueue int
+	PodsSizePerJob   int
+	PodDuration      string
 
 	ImpactingQueuesSize       int
 	ImpactingJobsSizePerQueue int
@@ -42,7 +41,6 @@ func (o *Options) AddFlags() {
 	flag.IntVar(&o.QueueSize, "queues-size", getEnvInt("QUEUES_SIZE", 1), "Number of queues to create")
 	flag.IntVar(&o.JobsSizePerQueue, "jobs-size-per-queue", getEnvInt("JOBS_SIZE_PER_QUEUE", 1), "Number of jobs per queue")
 	flag.IntVar(&o.PodsSizePerJob, "pods-size-per-job", getEnvInt("PODS_SIZE_PER_JOB", 1), "Number of pods per job")
-	flag.IntVar(&o.SubmitConcurrency, "submit-concurrency", getEnvInt("SUBMIT_CONCURRENCY", 10), "Number of concurrent job submissions")
 	flag.StringVar(&o.PodDuration, "pod-duration", getEnv("POD_DURATION", "30s"), "Duration of each pod")
 
 	flag.IntVar(&o.ImpactingQueuesSize, "impacting-queues-size", getEnvInt("IMPACTING_QUEUES_SIZE", 0), "Number of business impacting queues to create")

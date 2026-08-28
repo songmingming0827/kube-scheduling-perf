@@ -164,20 +164,13 @@ func (p *VolcanoProvider) AddJobs(ctx context.Context) error {
 		if step.delay > 0 {
 			time.Sleep(step.delay)
 		}
-		err := utils.SubmitConcurrently(ctx, p.SubmitConcurrency, func(yield func(string) error) error {
-			for i := range step.queueSize {
-				for range step.jobsPerQueue {
-					if err := yield(p.renderSingleJob(step.podsPerJob, i, step.priority, step.duration)); err != nil {
-						return err
-					}
+		for i := range step.queueSize {
+			for range step.jobsPerQueue {
+				err := p.addSingleJobs(ctx, step.podsPerJob, i, step.priority, step.duration)
+				if err != nil {
+					return err
 				}
 			}
-			return nil
-		}, func(ctx context.Context, job string) error {
-			return decoder.DecodeEach(ctx, strings.NewReader(job), decoder.CreateHandler(utils.Resources))
-		})
-		if err != nil {
-			return err
 		}
 	}
 	return nil
@@ -240,12 +233,12 @@ func (p *VolcanoProvider) WaitJobsCompleted(ctx context.Context) error {
 	}, wait.WithInterval(time.Second), wait.WithTimeout(time.Hour))
 }
 
-func (p *VolcanoProvider) renderSingleJob(podSize int, queueIndex int, priority string, duration string) string {
+func (p *VolcanoProvider) addSingleJobs(ctx context.Context, podSize int, queueIndex int, priority string, duration string) error {
 	jobYaml := batchJobYaml
 	if p.VolcanoMode == "agent" {
 		jobYaml = agentJobYaml
 	}
-	return utils.YamlWithArgs(jobYaml, map[string]any{
+	return decoder.DecodeEach(ctx, strings.NewReader(utils.YamlWithArgs(jobYaml, map[string]any{
 		"name":                fmt.Sprintf("%s-%d", priority, queueIndex),
 		"queue":               fmt.Sprintf("test-queue-%s-%d", priority, queueIndex),
 		"size":                podSize,
@@ -256,5 +249,5 @@ func (p *VolcanoProvider) renderSingleJob(podSize int, queueIndex int, priority 
 		"priority":            priority,
 		"preemption":          p.Preemption,
 		"duration":            duration,
-	})
+	})), decoder.CreateHandler(utils.Resources))
 }
