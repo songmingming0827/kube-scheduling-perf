@@ -36,6 +36,8 @@ RELATIVE_DASHBOARD_SCENARIO ?=
 DEFAULT_VOLCANO_MODE = $(if $(filter 1 2 3 4,$(RELATIVE_DASHBOARD_SCENARIO)),agent,batch)
 EFFECTIVE_VOLCANO_MODE = $(if $(filter auto,$(VOLCANO_MODE)),$(DEFAULT_VOLCANO_MODE),$(VOLCANO_MODE))
 SCHEDULER_RESULT_NAME = $(if $(and $(filter volcano,$(SCHEDULER)),$(filter agent,$(EFFECTIVE_VOLCANO_MODE))),volcano-agent,$(SCHEDULER))
+DASHBOARD_IMAGE_NAME = $(if $(filter agent,$(EFFECTIVE_VOLCANO_MODE)),job-submission-agent.png,job-submission.png)
+ALTERNATE_DASHBOARD_IMAGE_NAME = $(if $(filter agent,$(EFFECTIVE_VOLCANO_MODE)),job-submission.png,job-submission-agent.png)
 PROMETHEUS_URL ?= http://127.0.0.1:31003
 
 KIND_CLUSTER_NAME ?= volcano-benchmark-1348
@@ -629,8 +631,25 @@ test-scheduler-result-name:
 	test "$$($(MAKE) --no-print-directory print-scheduler-result-name SCHEDULER=kueue VOLCANO_MODE=agent)" = kueue
 	test "$$($(MAKE) --no-print-directory print-scheduler-result-name SCHEDULER=yunikorn VOLCANO_MODE=agent)" = yunikorn
 
+.PHONY: print-dashboard-image-name
+print-dashboard-image-name:
+	@printf '%s\n' "$(DASHBOARD_IMAGE_NAME)"
+
+.PHONY: print-alternate-dashboard-image-name
+print-alternate-dashboard-image-name:
+	@printf '%s\n' "$(ALTERNATE_DASHBOARD_IMAGE_NAME)"
+
+.PHONY: test-dashboard-image-name
+test-dashboard-image-name:
+	test "$$($(MAKE) --no-print-directory print-dashboard-image-name VOLCANO_MODE=agent)" = job-submission-agent.png
+	test "$$($(MAKE) --no-print-directory print-dashboard-image-name VOLCANO_MODE=batch)" = job-submission.png
+	test "$$($(MAKE) --no-print-directory print-dashboard-image-name VOLCANO_MODE=auto RELATIVE_DASHBOARD_SCENARIO=1)" = job-submission-agent.png
+	test "$$($(MAKE) --no-print-directory print-dashboard-image-name VOLCANO_MODE=auto RELATIVE_DASHBOARD_SCENARIO=5)" = job-submission.png
+	test "$$($(MAKE) --no-print-directory print-alternate-dashboard-image-name VOLCANO_MODE=agent)" = job-submission.png
+	test "$$($(MAKE) --no-print-directory print-alternate-dashboard-image-name VOLCANO_MODE=batch)" = job-submission-agent.png
+
 .PHONY: test-save-scheduler-result
-test-save-scheduler-result: test-scheduler-result-name
+test-save-scheduler-result: test-scheduler-result-name test-dashboard-image-name
 	./hack/test-save-scheduler-result.sh
 
 .PHONY: save-result
@@ -648,16 +667,20 @@ save-result: validate-result-scenario
 			TO="$$(cat ./tmp/relative-dashboard-to-millis)" \
 			FROM_ISO="$$(cat ./tmp/relative-dashboard-from-iso)" \
 			TO_ISO="$$(cat ./tmp/relative-dashboard-to-iso)" \
-			OUTPUT_FILE="$(CURDIR)/tmp/result-staging/job-submission.png" \
+			OUTPUT_FILE="$(CURDIR)/tmp/result-staging/$(DASHBOARD_IMAGE_NAME)" \
 			./hack/save-relative-dashboard-image.sh; then \
 			:; \
 	else \
 		status=$$?; \
 		echo "warning: relative Dashboard image was not saved (exit $$status)" >&2; \
-		rm -f ./tmp/result-staging/job-submission.png; \
+		rm -f ./tmp/result-staging/$(DASHBOARD_IMAGE_NAME); \
 	fi
 	@set -eu; \
 		target="./results/scenario-$(RELATIVE_DASHBOARD_SCENARIO)"; \
+		alternate_image="$(ALTERNATE_DASHBOARD_IMAGE_NAME)"; \
+		if test -f "$$target/$$alternate_image"; then \
+			cp "$$target/$$alternate_image" "./tmp/result-staging/$$alternate_image"; \
+		fi; \
 		mkdir -p "$$(dirname "$$target")"; \
 		rm -rf -- "$$target"; \
 		mv ./tmp/result-staging "$$target"

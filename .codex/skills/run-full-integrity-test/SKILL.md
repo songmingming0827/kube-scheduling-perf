@@ -47,7 +47,7 @@ Use the temporary logs, exit-code files, result manifests, and `results/scenario
 - `make down` exits `0` and all experiment resources are removed.
 - All scheduler components and Audit Exporter return to the fixed one-replica idle baseline.
 
-A missing or failed `job-submission.png` is recorded but does not fail an otherwise successful test.
+A missing or failed mode-specific Dashboard image is recorded but does not fail an otherwise successful test. Agent scenarios use `job-submission-agent.png`; Batch scenarios use `job-submission.png`.
 
 Derive each scenario's CST boundary from the timestamped start of its `make serial-test` command to the next scenario boundary, using the end of top-level `make` for scenario 8. Read the exact metric window from its `result-window.txt`.
 

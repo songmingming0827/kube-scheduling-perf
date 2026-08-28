@@ -304,6 +304,7 @@ make down
 `save-result` 只负责：
 
 - 完整运行三个调度器时，等待 Grafana Sidecar 加载本轮相对 Dashboard，并尝试保存其中的 `Job Submission — Created vs Scheduled` 面板；截图失败只告警，不改变测试结果
+- Agent 模式将图片写入 `job-submission-agent.png`，Batch 模式写入 `job-submission.png`；归档时保留另一模式已有的同级图片
 - 保存 `envs.txt` 和完整串行实验的 `result-window.txt`
 - 在 `envs.txt` 中记录解析后的实际 `VOLCANO_MODE`，而不是 `auto`
 - 将单张图片和结果元数据写入独立 staging 目录后原子归档，不移动整个 `./tmp`
@@ -406,7 +407,7 @@ Agent 模式的原生 Job 使用 `parallelism` 和 `completions` 表达每 Job P
 
 每个场景的三套调度方案测试完成并生成相对 Dashboard 后，等待 Grafana API 返回与本轮一致的时间窗，再通过 `127.0.0.1:8080/grafana` 渲染相对 Dashboard。结果图片统一截取顶部场景说明和 `Job Submission — Created vs Scheduled` 两个面板，并保留固定的上下留白。原 `perf` Dashboard 继续在 Grafana 中展示，但不作为结果图片来源。
 
-完整测试结果目录固定为 `results/scenario-1` 至 `results/scenario-8`，每个目录直接保存一张 `job-submission.png`、本轮的 `envs.txt` 和 `result-window.txt`，以及 `kueue`、`yunikorn` 和一个 Volcano 结果子目录。Agent 模式写入 `volcano-agent`，Batch 模式写入 `volcano`；每个调度器子目录保存 `window.txt` 和 `report.txt`。`envs.txt` 同时记录实际 `VOLCANO_MODE`。完整场景制品先写入独立 staging 目录后原子替换；单调度器运行只原子替换对应模式的调度器子目录，不覆盖另一个 Volcano 模式的已有结果。完整 `make` 最终生成 8 个场景目录、8 张图片和 24 组调度器报告；图片渲染失败只记录警告，不影响元数据和结果目录归档。
+完整测试结果目录固定为 `results/scenario-1` 至 `results/scenario-8`，每个目录直接保存本轮的 `envs.txt`、`result-window.txt`、模式对应的 Dashboard 图片，以及 `kueue`、`yunikorn` 和一个 Volcano 结果子目录。Agent 模式图片名为 `job-submission-agent.png`、结果目录为 `volcano-agent`；Batch 模式图片名为 `job-submission.png`、结果目录为 `volcano`。两种图片可以在场景根目录共存，每轮只替换当前模式图片并保留另一模式的已有图片。每个调度器子目录保存 `window.txt` 和 `report.txt`，`envs.txt` 同时记录实际 `VOLCANO_MODE`。完整场景制品先写入独立 staging 目录后原子替换；单调度器运行只原子替换对应模式的调度器子目录，不生成 Dashboard 图片。完整 `make` 每轮生成 8 张当前模式图片和 24 组调度器报告；图片渲染失败只记录警告，不影响元数据和结果目录归档。
 
 ### 8.2 八个相对时间 Dashboard 模板
 

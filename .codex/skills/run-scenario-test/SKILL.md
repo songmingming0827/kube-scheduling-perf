@@ -57,7 +57,7 @@ A requested scenario passes only when:
 
 The overall run passes only when every requested scenario passes and the final scheduler components and Audit Exporter are at the fixed one-replica idle baseline. Run the repository's resident verification scripts to confirm the final baseline.
 
-A missing or failed `job-submission.png` is recorded but does not fail an otherwise successful scenario. A scenario not reached because baseline restoration failed is `未执行`, not a test failure for that scenario; the overall run still fails because restoration failed.
+A missing or failed mode-specific Dashboard image is recorded but does not fail an otherwise successful scenario. Agent scenarios use `job-submission-agent.png`; Batch scenarios use `job-submission.png`. A scenario not reached because baseline restoration failed is `未执行`, not a test failure for that scenario; the overall run still fails because restoration failed.
 
 Read each scenario's exact metric window from `results/scenario-N/result-window.txt`. Use the wrapper's per-scenario CST timestamps for its command boundary and duration.
 

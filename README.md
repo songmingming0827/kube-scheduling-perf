@@ -129,14 +129,15 @@ The latest validated run completed all 24 cases successfully in `44m51.248s` (`2
 
 #### 4. View Results
 
-Every scenario writes to a stable directory and replaces the previous run of the same scenario:
+Every scenario writes to a stable directory, replaces the current mode's previous artifacts, and retains the other mode's Dashboard image:
 
 ```text
 results/
 └── scenario-<1..8>/
     ├── envs.txt
     ├── result-window.txt
-    ├── job-submission.png
+    ├── job-submission-agent.png  # VOLCANO_MODE=agent
+    ├── job-submission.png        # VOLCANO_MODE=batch
     ├── kueue/
     ├── volcano-agent/  # VOLCANO_MODE=agent
     ├── volcano/        # VOLCANO_MODE=batch
@@ -144,6 +145,7 @@ results/
 ```
 
 Each run writes exactly one of `volcano-agent/` or `volcano/`, according to the effective Volcano mode.
+Agent and Batch Dashboard images may coexist in the scenario directory; a run replaces only its mode's image and preserves the other one.
 
 The persistent Grafana endpoint is:
 

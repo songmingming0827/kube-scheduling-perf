@@ -53,7 +53,7 @@
 
 10000个job，每个Job只有1个Pod，有以下现象：
 
-![job-submission](results/scenario-1/job-submission.png)
+![job-submission](results/scenario-1/job-submission-agent.png)
 
 - created和scheduled曲线基本重合，调度阶段不是主要瓶颈，此时性能**瓶颈为创建阶段**。
   - 原因：**k8s客户端的qps/burst为100/200**；提交时以job为整体单位提交，故提交耗时最少要(10000 - Burst 200) / QPS 100 ≈ 98 秒。
@@ -67,7 +67,7 @@
 
 500个job，每个Job有20个Pod，有以下现象：
 
-![job-submission](results/scenario-2/job-submission.png)
+![job-submission](results/scenario-2/job-submission-agent.png)
 
 调度类型不同：
 
@@ -79,7 +79,7 @@
 
 20个job，每个Job有500个Pod，有以下现象：
 
-![job-submission](results/scenario-3/job-submission.png)
+![job-submission](results/scenario-3/job-submission-agent.png)
 
 - volcano在场景2和场景3两种情况下的调度速度几乎是不变的 - 15s左右；而kueue从场景2的15s左右时间 -> 场景3的10s左右时间
   - 场景3 Kueue 要处理 500 个 Workload 的准入，场景2只用20个
@@ -89,7 +89,7 @@
 
 只有1个job，每个Job有10000个Pod，有以下现象：
 
-![job-submission](results/scenario-4/job-submission.png)
+![job-submission](results/scenario-4/job-submission-agent.png)
 
 - kube-controller创建pod速度存在瓶颈
 
