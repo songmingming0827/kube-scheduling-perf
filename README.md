@@ -136,8 +136,14 @@ results/
 └── scenario-<1..8>/
     ├── envs.txt
     ├── result-window.txt
-    └── job-submission.png
+    ├── job-submission.png
+    ├── kueue/
+    ├── volcano-agent/  # VOLCANO_MODE=agent
+    ├── volcano/        # VOLCANO_MODE=batch
+    └── yunikorn/
 ```
+
+Each run writes exactly one of `volcano-agent/` or `volcano/`, according to the effective Volcano mode.
 
 The persistent Grafana endpoint is:
 

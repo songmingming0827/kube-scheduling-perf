@@ -35,6 +35,7 @@ SCHEDULERS ?= $(COMPARISON_SCHEDULERS)
 RELATIVE_DASHBOARD_SCENARIO ?=
 DEFAULT_VOLCANO_MODE = $(if $(filter 1 2 3 4,$(RELATIVE_DASHBOARD_SCENARIO)),agent,batch)
 EFFECTIVE_VOLCANO_MODE = $(if $(filter auto,$(VOLCANO_MODE)),$(DEFAULT_VOLCANO_MODE),$(VOLCANO_MODE))
+SCHEDULER_RESULT_NAME = $(if $(and $(filter volcano,$(SCHEDULER)),$(filter agent,$(EFFECTIVE_VOLCANO_MODE))),volcano-agent,$(SCHEDULER))
 PROMETHEUS_URL ?= http://127.0.0.1:31003
 
 KIND_CLUSTER_NAME ?= volcano-benchmark-1348
@@ -553,7 +554,7 @@ serial-test: validate-result-scenario validate-volcano-mode ensure-directories
 		$(MAKE) save-result; \
 	fi
 	$(foreach sched,$(SCHEDULERS), \
-		$(MAKE) save-scheduler-result SCHEDULER=$(sched) SCENARIO=$(RELATIVE_DASHBOARD_SCENARIO); \
+		$(MAKE) save-scheduler-result SCHEDULER=$(sched) SCENARIO=$(RELATIVE_DASHBOARD_SCENARIO) VOLCANO_MODE=$(EFFECTIVE_VOLCANO_MODE); \
 	)
 	@if test "$(RELATIVE_DASHBOARD_SCENARIO)" = custom; then \
 		target="./results/scenario-custom"; \
@@ -610,13 +611,26 @@ save-scheduler-result:
 	OUTPUT_DIR="$(CURDIR)/tmp/result-$(SCHEDULER)-staging" \
 	AUDIT_LOG_PATH="$(AUDIT_REPORT_LOG_PATH)" \
 	./hack/save-scheduler-result.sh
-	@target="./results/scenario-$(SCENARIO)/$(SCHEDULER)"; \
+	@target="./results/scenario-$(SCENARIO)/$(SCHEDULER_RESULT_NAME)"; \
 	mkdir -p "$$(dirname "$$target")"; \
 	rm -rf -- "$$target"; \
 	mv ./tmp/result-$(SCHEDULER)-staging "$$target"
 
+.PHONY: print-scheduler-result-name
+print-scheduler-result-name:
+	@printf '%s\n' "$(SCHEDULER_RESULT_NAME)"
+
+.PHONY: test-scheduler-result-name
+test-scheduler-result-name:
+	test "$$($(MAKE) --no-print-directory print-scheduler-result-name SCHEDULER=volcano VOLCANO_MODE=agent)" = volcano-agent
+	test "$$($(MAKE) --no-print-directory print-scheduler-result-name SCHEDULER=volcano VOLCANO_MODE=batch)" = volcano
+	test "$$($(MAKE) --no-print-directory print-scheduler-result-name SCHEDULER=volcano VOLCANO_MODE=auto RELATIVE_DASHBOARD_SCENARIO=1)" = volcano-agent
+	test "$$($(MAKE) --no-print-directory print-scheduler-result-name SCHEDULER=volcano VOLCANO_MODE=auto RELATIVE_DASHBOARD_SCENARIO=5)" = volcano
+	test "$$($(MAKE) --no-print-directory print-scheduler-result-name SCHEDULER=kueue VOLCANO_MODE=agent)" = kueue
+	test "$$($(MAKE) --no-print-directory print-scheduler-result-name SCHEDULER=yunikorn VOLCANO_MODE=agent)" = yunikorn
+
 .PHONY: test-save-scheduler-result
-test-save-scheduler-result:
+test-save-scheduler-result: test-scheduler-result-name
 	./hack/test-save-scheduler-result.sh
 
 .PHONY: save-result

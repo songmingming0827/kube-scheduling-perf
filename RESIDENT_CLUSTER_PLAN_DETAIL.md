@@ -28,6 +28,8 @@ make
 
 `make` 串行调用 `scenario-1` 至 `scenario-8`。每个场景依次运行 Kueue、Volcano 和 YuniKorn；Volcano 在场景 1～4 默认使用 Agent Scheduler，在场景 5～8 默认使用 Batch Scheduler。每个场景完成后生成相对 Dashboard、图片、元数据和三套调度器报告。
 
+> Skill：run-full-integrity-test，自动运行完整性测试，生成结果报告，对比图
+
 ### 2.2 单场景运行
 
 运行一个场景和全部调度器：
@@ -40,9 +42,11 @@ make scenario-2
 
 ```text
 results/scenario-2/kueue/
-results/scenario-2/volcano/
+results/scenario-2/volcano-agent/
 results/scenario-2/yunikorn/
 ```
+
+> Skill：run-scenario-test，自动运行指定场景，一次会运行三个调度器，然后生成结果报告，对比图
 
 ### 2.3 单场景、单调度器运行
 
@@ -55,14 +59,16 @@ make scenario-2 SCHEDULERS=volcano
 单调度器运行仍执行对应的 `prepare → start → end` 流程，但只保存该调度器的结果。例如 Volcano 仅更新：
 
 ```text
-results/scenario-2/volcano/
+results/scenario-2/volcano-agent/
 ├── window.txt
 └── report.txt
 ```
 
-单调度器运行不更新三调度器相对 Dashboard，也不覆盖已有的完整对比结果。Agent 和 Batch 共用逻辑名称 `volcano`、审计标签和结果目录，实际模式记录在完整场景的 `envs.txt` 中。将 `SCHEDULERS` 改为 `kueue` 或 `yunikorn` 时写入对应目录。
+单调度器运行不更新三调度器相对 Dashboard，也不覆盖已有的完整对比结果。Agent 和 Batch 共用逻辑名称 `volcano`、审计标签和 `bench-volcano` namespace，但结果分别写入 `volcano-agent` 和 `volcano` 目录。实际模式同时记录在完整场景的 `envs.txt` 中。将 `SCHEDULERS` 改为 `kueue` 或 `yunikorn` 时写入对应目录。
 
 `scenario-1` 至 `scenario-8` 分别对应八个固定场景。运行异常中断后执行 `make down` 恢复常驻集群基线。
+
+> Skill：run-single-scheduler-scenario-test，自动运行单场景+单调度器，生成结果报告
 
 ### 2.4 单场景、单调度器运行用于性能测试
 
@@ -85,6 +91,8 @@ results/scenario-custom/envs.txt
 results/scenario-custom/result-window.txt
 results/scenario-custom/volcano/report.txt
 ```
+
+> Skill：run-custom-scenario-test，自动运行指定场景+指定调度器，其中“指定场景”可以自定义要测试的指标，用于性能测试
 
 ## 3. Makefile 方案细节
 
@@ -313,7 +321,7 @@ make down
 
 `start-<scheduler>` 和 `end-<scheduler>` 同时记录审计文件 inode 与字节位置。inode 相同时，报告脚本读取同一文件的起止字节区间；测试期间发生一次 kube-apiserver 审计日志轮转时，脚本按起始 inode 找到已轮转文件，拼接旧文件尾部与新文件头部后统一解析。因此正常的单次轮转不会再导致报告保存失败。
 
-结果写入 `results/scenario-<n>/<scheduler>`。Agent 和 Batch 均写入 `results/scenario-<n>/volcano`，场景 1～4 默认表示 Agent、场景 5～8 默认表示 Batch。完整场景运行保存三个调度器目录；单调度器运行只原子替换本轮调度器目录，不修改同场景的其他结果。
+结果写入 `results/scenario-<n>/<result-scheduler>`。Volcano Agent 的结果名为 `volcano-agent`，Volcano Batch 保持 `volcano`；Kueue 和 YuniKorn 保持逻辑调度器名。完整场景运行保存三个调度器目录；单调度器运行只原子替换本轮对应模式的结果目录，不修改同场景的其他结果。
 
 ### 3.7 顶层 `make down`
 
@@ -398,7 +406,7 @@ Agent 模式的原生 Job 使用 `parallelism` 和 `completions` 表达每 Job P
 
 每个场景的三套调度方案测试完成并生成相对 Dashboard 后，等待 Grafana API 返回与本轮一致的时间窗，再通过 `127.0.0.1:8080/grafana` 渲染相对 Dashboard。结果图片统一截取顶部场景说明和 `Job Submission — Created vs Scheduled` 两个面板，并保留固定的上下留白。原 `perf` Dashboard 继续在 Grafana 中展示，但不作为结果图片来源。
 
-完整测试结果目录固定为 `results/scenario-1` 至 `results/scenario-8`，每个目录直接保存一张 `job-submission.png`、本轮的 `envs.txt` 和 `result-window.txt`，以及 `kueue`、`volcano`、`yunikorn` 三个调度器子目录。每个调度器子目录保存 `window.txt` 和 `report.txt`。`envs.txt` 中的 `VOLCANO_MODE` 标明 `volcano` 子目录实际使用 Agent 还是 Batch。完整场景制品先写入独立 staging 目录后原子替换；单调度器运行只原子替换对应调度器子目录，不覆盖完整对比结果。完整 `make` 最终生成 8 个场景目录、8 张图片和 24 组调度器报告；图片渲染失败只记录警告，不影响元数据和结果目录归档。
+完整测试结果目录固定为 `results/scenario-1` 至 `results/scenario-8`，每个目录直接保存一张 `job-submission.png`、本轮的 `envs.txt` 和 `result-window.txt`，以及 `kueue`、`yunikorn` 和一个 Volcano 结果子目录。Agent 模式写入 `volcano-agent`，Batch 模式写入 `volcano`；每个调度器子目录保存 `window.txt` 和 `report.txt`。`envs.txt` 同时记录实际 `VOLCANO_MODE`。完整场景制品先写入独立 staging 目录后原子替换；单调度器运行只原子替换对应模式的调度器子目录，不覆盖另一个 Volcano 模式的已有结果。完整 `make` 最终生成 8 个场景目录、8 张图片和 24 组调度器报告；图片渲染失败只记录警告，不影响元数据和结果目录归档。
 
 ### 8.2 八个相对时间 Dashboard 模板
 
