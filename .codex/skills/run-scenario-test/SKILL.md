@@ -52,7 +52,7 @@ A requested scenario passes only when:
 
 - Its `make scenario-N` command exits `0`.
 - Its three `TestBatchJob` cases pass with no failures or timeouts.
-- `results/scenario-N` is updated and contains `envs.txt`, `result-window.txt`, and the `kueue`, `volcano`, and `yunikorn` result directories.
+- `results/scenario-N` is updated and contains `envs.txt`, `result-window.txt`, `kueue`, `yunikorn`, and the mode-specific Volcano result directory: `volcano-agent` for scenarios 1 through 4 and `volcano` for scenarios 5 through 8.
 - The `make down` following that scenario exits `0` and removes all experiment resources.
 
 The overall run passes only when every requested scenario passes and the final scheduler components and Audit Exporter are at the fixed one-replica idle baseline. Run the repository's resident verification scripts to confirm the final baseline.

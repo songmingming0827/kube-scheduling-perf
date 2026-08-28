@@ -90,6 +90,10 @@ effective_volcano_mode="${volcano_mode}"
 if [[ "${volcano_mode}" == "auto" ]]; then
   effective_volcano_mode="batch"
 fi
+result_scheduler="${scheduler}"
+if [[ "${scheduler}" == "volcano" && "${effective_volcano_mode}" == "agent" ]]; then
+  result_scheduler="volcano-agent"
+fi
 expected_pods=$((queues * jobs * pods_per_job))
 
 cd "${repository}"
@@ -109,8 +113,8 @@ cleanup_result_staging
 
 TZ=Asia/Shanghai date '+%Y-%m-%d %H:%M:%S' >"${run_workspace}/started-cst.txt"
 git rev-parse HEAD >"${run_workspace}/tested-commit.txt"
-printf 'scheduler=%s\nvolcano_mode=%s\neffective_volcano_mode=%s\nqueues=%s\njobs=%s\npods_per_job=%s\ngang=%s\ntimeout_seconds=%s\nexpected_pods=%s\n' \
-  "${scheduler}" "${volcano_mode}" "${effective_volcano_mode}" "${queues}" "${jobs}" \
+printf 'scheduler=%s\nvolcano_mode=%s\neffective_volcano_mode=%s\nresult_scheduler=%s\nqueues=%s\njobs=%s\npods_per_job=%s\ngang=%s\ntimeout_seconds=%s\nexpected_pods=%s\n' \
+  "${scheduler}" "${volcano_mode}" "${effective_volcano_mode}" "${result_scheduler}" "${queues}" "${jobs}" \
   "${pods_per_job}" "${gang}" "${timeout_seconds}" "${expected_pods}" \
   >"${run_workspace}/parameters.txt"
 
@@ -136,7 +140,7 @@ validation_status=1
 publish_status=1
 observed_pods=""
 result_root="results/scenario-custom"
-result_path="${result_root}/${scheduler}"
+result_path="${result_root}/${result_scheduler}"
 
 if [[ "${make_status}" -eq 0 && "${down_status}" -eq 0 ]]; then
   validation_status=0

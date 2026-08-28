@@ -52,6 +52,11 @@ if [[ "${scheduler}" == "volcano" && "${volcano_mode}" == "auto" ]]; then
   esac
 fi
 
+result_scheduler="${scheduler}"
+if [[ "${scheduler}" == "volcano" && "${effective_volcano_mode}" == "agent" ]]; then
+  result_scheduler="volcano-agent"
+fi
+
 if [[ ! -d "${repository}/.git" ]]; then
   printf 'repository is not a Git checkout: %s\n' "${repository}" >&2
   exit 2
@@ -93,7 +98,9 @@ git pull --ff-only origin master
 
 TZ=Asia/Shanghai date '+%Y-%m-%d %H:%M:%S' >"${run_workspace}/started-cst.txt"
 git rev-parse HEAD >"${run_workspace}/tested-commit.txt"
-printf 'requested=%s\neffective=%s\n' "${volcano_mode}" "${effective_volcano_mode}" >"${run_workspace}/volcano-mode.txt"
+printf 'requested=%s\neffective=%s\nresult_scheduler=%s\n' \
+  "${volcano_mode}" "${effective_volcano_mode}" "${result_scheduler}" \
+  >"${run_workspace}/volcano-mode.txt"
 
 set +o errexit
 make "scenario-${scenario}" SCHEDULERS="${scheduler}" VOLCANO_MODE="${volcano_mode}" 2>&1 | timestamp_stream | tee "${run_workspace}/make.log"
@@ -107,7 +114,7 @@ set -o errexit
 
 publish_status=0
 if [[ "${make_status}" -eq 0 && "${down_status}" -eq 0 ]]; then
-  result_path="results/scenario-${scenario}/${scheduler}"
+  result_path="results/scenario-${scenario}/${result_scheduler}"
   set +o errexit
   git add -- "${result_path}"
   publish_status="$?"

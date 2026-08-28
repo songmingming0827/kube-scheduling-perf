@@ -43,7 +43,7 @@ Use the temporary logs, exit-code files, result manifests, and `results/scenario
 
 - `make` exits `0`.
 - `24/24` `TestBatchJob` cases pass with no failures or timeouts.
-- All eight scenario directories are updated and contain `envs.txt` and `result-window.txt`.
+- All eight scenario directories are updated and contain `envs.txt`, `result-window.txt`, `kueue`, `yunikorn`, and the mode-specific Volcano result directory: `volcano-agent` for scenarios 1 through 4 and `volcano` for scenarios 5 through 8.
 - `make down` exits `0` and all experiment resources are removed.
 - All scheduler components and Audit Exporter return to the fixed one-replica idle baseline.
 

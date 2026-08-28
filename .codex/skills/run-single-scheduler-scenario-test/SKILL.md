@@ -37,7 +37,7 @@ The script:
 - Runs `make scenario-N SCHEDULERS=<scheduler> VOLCANO_MODE=<mode>`. The optional mode defaults to `auto`.
 - Always runs `make down` afterward.
 - Does not inspect or validate `window.txt` or `report.txt`.
-- When both Make commands succeed, stages only `results/scenario-N/<scheduler>`, commits it as a timestamped single-scheduler test result, includes the effective `agent` or `batch` mode in a Volcano result commit, and pushes `master`.
+- When both Make commands succeed, stages only the scheduler's result directory and pushes it in a timestamped commit. Volcano Agent uses `results/scenario-N/volcano-agent`; Volcano Batch uses `results/scenario-N/volcano`; Kueue and YuniKorn use their scheduler names. A Volcano commit includes the effective `agent` or `batch` mode.
 - Does not publish results when either Make command fails.
 - Writes logs, statuses, the requested and effective Volcano modes, the publication commit, and a completion marker into the temporary workspace.
 

@@ -65,7 +65,7 @@ Do not generate or expect a relative Dashboard. Do not modify `results/scenario-
 A run passes only when:
 
 - `make scenario-custom` and the following `make down` both exit `0`.
-- `results/scenario-custom/envs.txt`, `result-window.txt`, and `<scheduler>/{window.txt,report.txt}` exist and are non-empty.
+- `results/scenario-custom/envs.txt`, `result-window.txt`, and the resolved scheduler result directory's `window.txt` and `report.txt` exist and are non-empty. Volcano Agent uses `volcano-agent`; Volcano Batch uses `volcano`; Kueue and YuniKorn use their scheduler names.
 - `envs.txt` records the requested scheduler, queue count, Job count, replicas, Gang setting, and effective Volcano mode.
 - `report.txt` contains P50, P90, P99, throughput, and a scheduled Pod count equal to `QUEUES_SIZE × JOBS_SIZE_PER_QUEUE × PODS_SIZE_PER_JOB`.
 - The resident verification scripts confirm the fixed idle baseline after cleanup.
