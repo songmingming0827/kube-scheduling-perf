@@ -5,8 +5,8 @@ basic:
 custom:
   scheduler_schedule_period: 200ms
   agent_scheduler_enable: true
-  # Throughput tuning baseline: one Agent Scheduler replica with six scheduling workers.
-  agent_scheduler_worker_count: 6
+  # Throughput tuning baseline: one Agent Scheduler replica with four scheduling workers.
+  agent_scheduler_worker_count: 4
   controller_enabled_controllers: "*,-sharding-controller"
   controller_kube_api_qps: 1000
   controller_kube_api_burst: 1000

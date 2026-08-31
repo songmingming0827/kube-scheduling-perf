@@ -215,7 +215,7 @@ Kueue、Scheduler Plugins 和 kube-prometheus-stack 的期望 SHA-256 已写入 
 - Agent Scheduler 名称：`agent-scheduler`
 - Helm release：`volcano`，chart `volcano-1.15.1`
 - 常驻 Deployment：`volcano-scheduler`、`volcano-agent-scheduler`、`volcano-controllers`、`volcano-admission`，各 `1` 副本
-- Agent Scheduler 镜像：`volcanosh/vc-agent-scheduler:v1.15.1`；Scheduler Worker 为 `6`，采用事件驱动调度，不设置 Batch Scheduler 的 `schedule-period`
+- 版本化 Helm Agent Scheduler 镜像：`volcanosh/vc-agent-scheduler:v1.15.1`；当前性能验证部署覆盖为 `crpi-ldgaqlsrparac7fl.cn-hangzhou.personal.cr.aliyuncs.com/mingm/vc-agent-scheduler:masterperf1`；Scheduler Worker 为 `4`，采用事件驱动调度，不设置 Batch Scheduler 的 `schedule-period`
 - Sharding Controller：关闭
 - Webhook 目标命名空间标签：`benchmark.scheduling/base=volcano`
 - 安装后空闲配置：actions 为 `enqueue, allocate, backfill`；第一层为 `priority/gang/conformance`，第二层为 `overcommit/drf/predicates/proportion/nodeorder/binpack`
@@ -711,3 +711,11 @@ Grafana Ingress 的版本化部署源位于仓库，当前文件指纹如下：
 - Agent Scheduler 保持单 Deployment 副本，内部 `--scheduler-worker-count` 从 `16` 调整为 `6`；Node Worker `20`、Kubernetes API QPS/Burst `1000/1000` 和 CPU `500m/8` 均保持不变。
 - 版本化 Helm values 已同步固定为 `agent_scheduler_worker_count: 6`，后续重新部署会保持该并发基线。
 - 本次仅重新部署 Volcano release 并核对 Agent Scheduler 启动参数，不运行性能场景；Worker `6` 的吞吐与延迟效果需以后续 benchmark 结果判断。
+
+## 32. 2026-08-31 fused score 优化与 Agent Worker 4 验证
+
+- 同一套低开销 Binder 指标显示，fused 优化在 Worker `6` 时为了完成 10,000 次绑定执行了 33,422 个调度周期，其中 23,422 次为三候选全冲突，冲突占调度周期 `70.08%`；这解释了此前约 390 pods/s 的回归。相同 Snapshot 下，新旧实现的逐节点分数、最高分组和 Top3 已验证完全一致，回归不是打分语义错误。
+- 将 Agent Scheduler 从 Worker `6` 调整为 Worker `4` 后，优化版仅执行 10,016 个周期，三候选全冲突降为 16 次（`0.16%`）。场景 3 结果为 P50 `1092.43 ms`、P90 `1457.80 ms`、P99 `1630.70 ms`、吞吐 `947.68 pods/s`、吞吐窗口 `10.552 s`。
+- 同 Worker `4` 的 baseline 对照为 P50 `2328.54 ms`、P90 `3703.48 ms`、P99 `3964.97 ms`、吞吐 `761.62 pods/s`、吞吐窗口 `13.130 s`，三候选全冲突为 0。优化版吞吐提升 `24.43%`，P50/P90/P99 分别降低约 `53.08%`、`60.64%`、`58.87%`；平均单周期 Scoring 从约 `2.527 ms` 降到 `1.557 ms`。
+- 根因是 Worker `6` 的结果生产速度超过单 ConflictAwareBinder 的稳定处理能力，容量 5000 的结果队列积累陈旧候选并触发 generation 冲突反馈。Worker `4` 可在不修改 Binder 架构的前提下保持队列稳定并体现 fused score 收益。
+- 当前 live Deployment 使用 `masterperf1`，运行二进制 SHA-256 为 `05efa06a7166440b54eb114e200d2f21b9957c818bf876638e03ff8586404abf`，`--scheduler-worker-count=4`，Ready `1/1`；集群为 `1001/1001 Ready`。版本化 Helm values 已同步固定为 `agent_scheduler_worker_count: 4`。
