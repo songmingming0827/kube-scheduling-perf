@@ -724,6 +724,6 @@ Grafana Ingress 的版本化部署源位于仓库，当前文件指纹如下：
 
 - 场景 3、Volcano Agent Scheduler、Worker `4` 下，按 `master` 连续 7 轮、`masterperf1` 连续 7 轮顺序完成正式对照；每轮均调度 `10,000` 个 Pod，测试、`make down` 和结果发布全部成功。
 - 统计以吞吐量为唯一裁剪依据：每组删除吞吐最高和最低的对应整轮，再对剩余 5 轮的全部指标求平均。`master` 删除第 `1/5` 轮，平均 P50/P90/P99 为 `2265.296/3704.348/3961.418 ms`，吞吐为 `762.772 pods/s`；`masterperf1` 删除第 `5/7` 轮，平均为 `1115.628/1554.856/1637.436 ms` 和 `936.232 pods/s`。
-- `masterperf1` 相对 `master` 吞吐提升 `22.74%`，P50/P90/P99 分别降低 `50.75%/58.03%/58.67%`，证明 fused score 优化在 Worker `4` 下可以稳定体现收益。
+- `masterperf1` 相对 `master` 吞吐提升 `22.74%`，P50/P90/P99 分别降低 `50.75%/58.03%/58.67%`；同一保留轮次的 Binding window 平均值从 `13.1102 s` 缩短到 `10.6820 s`，降低 `18.52%`（完成速度 `1.2273×`），证明 fused score 优化在 Worker `4` 下可以稳定体现收益。
 - 代理交接期间产生的预备提交 `4fa8b4f` 和 `2d41838` 不属于正式 14 轮，未纳入统计。逐轮数据、裁剪说明和提交映射见 `agent_scheduler_scenario3_worker4_7round_report_0901.md` 与 `agent_scheduler_scenario3_worker4_7round_raw_0901.tsv`。
 - 测试后 live Deployment 保持 `masterperf1`、Worker `4`、Ready `1/1`，运行二进制 SHA-256 为 `05efa06a7166440b54eb114e200d2f21b9957c818bf876638e03ff8586404abf`；集群为 `1001/1001 Ready`，服务器仓库 clean 并与 `origin/master` 一致。
