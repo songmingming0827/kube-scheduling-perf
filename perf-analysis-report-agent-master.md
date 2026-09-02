@@ -2,7 +2,7 @@
 
 ## 调度器版本
 
-![image-20260814102915994](/Users/csmvic/Downloads/volcano-versions/kube-scheduling-perf/images/versions.png)
+![image-20260814102915994](images/versions.png)
 
 ## 参数配置	
 
@@ -40,7 +40,7 @@
 
 本次测试benchmark如下图，在10k总Pod量下，分别在启用/不启用**Gang** Scheduling的情况下，调整Job数量和每Job的Pod数量。
 
-![image-20260814103140184](/Users/csmvic/Downloads/volcano-versions/kube-scheduling-perf/images/cases.png)
+![image-20260814103140184](images/cases.png)
 
 ## 测试结果
 
@@ -52,7 +52,7 @@
 
 10000个job，每个Job只有1个Pod，有以下现象：
 
-![job-submission](results/scenario-2/job-submission-agent.png)
+![job-submission](images/agent-scheduler-master/scenario-1/job-submission-agent.png)
 
 - created和scheduled曲线基本重合，调度阶段不是主要瓶颈，此时性能**瓶颈为创建阶段**。
   - 原因：**k8s客户端的qps/burst为100/200**；提交时以job为整体单位提交，故提交耗时最少要(10000 - Burst 200) / QPS 100 ≈ 98 秒。
@@ -66,7 +66,7 @@
 
 500个job，每个Job有20个Pod，有以下现象：
 
-![job-submission](results/scenario-2/job-submission-agent.png)
+![job-submission](images/agent-scheduler-master/scenario-2/job-submission-agent.png)
 
 1. kueue、yunikron、volcano均适用原生job、创建job统一由kube-controller负责，所以创建pod速率基本相同；
 2. Agent Scheduler 是一个基于worker的并发调度循环 ，这里设置--scheduler-worker-count = 4，测试没有发现“conflict”现象；
@@ -82,7 +82,7 @@
 
 20个job，每个Job有500个Pod，有以下现象：
 
-![job-submission](/Users/csmvic/Downloads/volcano-versions/kube-scheduling-perf/results/scenario-3/job-submission-agent.png)
+![job-submission](images/agent-scheduler-master/scenario-3/job-submission-agent.png)
 
 - 同场景2
 
@@ -90,7 +90,7 @@
 
 只有1个job，每个Job有10000个Pod，有以下现象：
 
-![job-submission](/Users/csmvic/Downloads/volcano-versions/kube-scheduling-perf/results/scenario-4/job-submission-agent.png)
+![job-submission](images/agent-scheduler-master/scenario-4/job-submission-agent.png)
 
 - kube-controller创建pod速度存在瓶颈
 
