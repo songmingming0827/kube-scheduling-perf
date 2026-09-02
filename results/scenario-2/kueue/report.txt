@@ -1,0 +1,7 @@
+[INFO]  11:42:56 === Pod Scheduling Latency (created -> scheduled) ===
+[INFO]  11:42:56   P50:  3110.25 ms
+[INFO]  11:42:56   P90:  3607.65 ms
+[INFO]  11:42:56   P99:  3689.43 ms
+[INFO]  11:42:56   Total scheduled: 10000 pods
+[INFO]  11:42:56   Pod scheduling throughput: 748.96 pods/sec
+[INFO]  11:42:56   Throughput window: 13.352 sec (10000 binding events)
