@@ -1,0 +1,81 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1800" height="1000" viewBox="0 0 1800 1000" role="img" aria-labelledby="title desc">
+  <title id="title">灵活、可插拔的 K8s 调度 Benchmark 架构</title>
+  <desc id="desc">以中性灰蓝表示原生 kube-scheduling-perf，以青蓝色表示本项目新增与扩展能力。保留测试选择、控制平面、插件平台、数据产物和技能包五层布局。</desc>
+  <defs>
+    <linearGradient id="page" x1="0" y1="0" x2="1" y2="1"><stop stop-color="#fbfcfd"/><stop offset="1" stop-color="#f1f5f8"/></linearGradient>
+    <linearGradient id="nativeBar" x1="0" y1="0" x2="1" y2="0"><stop stop-color="#566b7d"/><stop offset="1" stop-color="#718696"/></linearGradient>
+    <filter id="shadow" x="-15%" y="-20%" width="130%" height="150%"><feDropShadow dx="0" dy="3" stdDeviation="5" flood-color="#17324d" flood-opacity=".10"/></filter>
+    <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto"><path d="M0 0L10 5L0 10Z" fill="#748899"/></marker>
+    <style>
+      text{font-family:Inter,"PingFang SC","Microsoft YaHei",sans-serif;fill:#18324a}.title{font-size:35px;font-weight:760}.subtitle{font-size:16px;fill:#63788b}.section{font-size:15px;font-weight:720;fill:#587085}.h2{font-size:18px;font-weight:740}.h3{font-size:15px;font-weight:720}.body{font-size:13px;fill:#607689}.tiny{font-size:12px;fill:#718698}.nativeText{fill:#566b7d}.customText{fill:#087f83}.nativeCard{fill:#f7f9fb;stroke:#aab9c5;stroke-width:1.6}.customCard{fill:#f8fdfd;stroke:#37a5a8;stroke-width:1.8}.wire{fill:none;stroke:#748899;stroke-width:2}.arrow{fill:none;stroke:#748899;stroke-width:2;marker-end:url(#arrow)}
+    </style>
+  </defs>
+  <rect width="1800" height="1000" fill="url(#page)"/>
+
+  <!-- Header -->
+  <text x="40" y="55" class="title">灵活、可插拔的 K8s 调度 Benchmark</text>
+  <text x="40" y="84" class="subtitle">一个执行引擎 · 四类插件 · 任意测试矩阵 · 可复现结果</text>
+  <rect x="1370" y="28" width="380" height="48" rx="24" fill="#e4f1f8" stroke="#b5cee0"/>
+  <text x="1560" y="58" text-anchor="middle" font-size="14" font-weight="700" fill="#285b7e">Case = Scenario × Scheduler × Plugin-config</text>
+  <g transform="translate(1305 89)">
+    <rect width="190" height="31" rx="15" fill="#f3f6f8" stroke="#aab9c5"/><circle cx="17" cy="15.5" r="6" fill="#8295a4"/><text x="31" y="20" font-size="12" font-weight="650" fill="#647887">原生 kube-scheduling-perf</text>
+    <rect x="205" width="190" height="31" rx="15" fill="#eefafa" stroke="#37a5a8"/><circle cx="222" cy="15.5" r="6" fill="#15969a"/><text x="236" y="20" font-size="12" font-weight="650" fill="#087f83">本项目新增与扩展</text>
+  </g>
+
+  <!-- 01 selection: custom -->
+  <text x="40" y="140" class="section">01 统一入口 / TEST Selection</text>
+  <g filter="url(#shadow)">
+    <rect x="40" y="158" width="280" height="82" rx="10" class="nativeCard"/><rect x="40" y="158" width="7" height="82" rx="3" fill="#8295a4"/><circle cx="78" cy="199" r="18" fill="#e7edf1"/><text x="78" y="205" text-anchor="middle" font-size="14" font-weight="740" fill="#647887">默</text><text x="112" y="190" class="h3 nativeText">默认完整测试</text><text x="112" y="216" class="body">全部场景 × 全部调度器</text>
+    <rect x="340" y="158" width="280" height="82" rx="10" class="nativeCard"/><rect x="340" y="158" width="7" height="82" rx="3" fill="#8295a4"/><circle cx="378" cy="199" r="18" fill="#e7edf1"/><text x="378" y="205" text-anchor="middle" font-size="14" font-weight="740" fill="#647887">单</text><text x="412" y="190" class="h3 nativeText">选择场景</text><text x="412" y="216" class="body">单个或多个场景</text>
+    <rect x="640" y="158" width="310" height="82" rx="10" class="customCard"/><rect x="640" y="158" width="7" height="82" rx="3" fill="#15969a"/><circle cx="678" cy="199" r="18" fill="#dff4f3"/><text x="678" y="205" text-anchor="middle" font-size="14" font-weight="740" fill="#087f83">精</text><text x="712" y="190" class="h3 customText">精确组合</text><text x="712" y="216" class="body">场景 + 调度器 + 模式</text>
+    <rect x="970" y="158" width="310" height="82" rx="10" class="customCard"/><rect x="970" y="158" width="7" height="82" rx="3" fill="#15969a"/><circle cx="1008" cy="199" r="18" fill="#dff4f3"/><text x="1008" y="205" text-anchor="middle" font-size="14" font-weight="740" fill="#087f83">性</text><text x="1042" y="190" class="h3 customText">性能测试</text><text x="1042" y="216" class="body">自定义场景 + 调度器 + 统计分析</text>
+    <rect x="1300" y="158" width="450" height="82" rx="10" class="customCard" stroke-dasharray="6 4"/><rect x="1300" y="158" width="7" height="82" rx="3" fill="#15969a"/><text x="1330" y="190" class="h3 customText">其他测试接口</text><text x="1330" y="216" class="body">增加 scenario-custom，或者自定义测试组合</text>
+  </g>
+  <path d="M180 240V270H1518" class="wire"/><path d="M480 240V270M795 240V270M1125 240V270M1518 240V270" class="wire"/>
+
+  <!-- 02 native control plane -->
+  <text x="40" y="302" class="section">02 控制平面 / BENCHMARK ORCHESTRATOR</text>
+  <rect x="40" y="320" width="1710" height="116" rx="15" fill="url(#nativeBar)" filter="url(#shadow)"/>
+  <rect x="68" y="339" width="230" height="78" rx="11" fill="#fff" fill-opacity=".10" stroke="#aebcc7"/><text x="183" y="371" text-anchor="middle" font-size="18" font-weight="740" fill="#fff">kube-scheduling-perf</text><rect x="108" y="385" width="150" height="20" rx="10" fill="#fff" fill-opacity=".14"/><text x="183" y="399" text-anchor="middle" font-size="11" fill="#e7edf1">UPSTREAM CORE</text>
+  <path d="M298 378H395" stroke="#c8d3db" stroke-width="2"/>
+  <g>
+    <rect x="395" y="344" width="170" height="68" rx="9" fill="#f7f9fb" stroke="#aab9c5"/><text x="480" y="384" text-anchor="middle" class="h3 nativeText">配置解析器</text>
+    <path d="M565 378H640" stroke="#c8d3db" stroke-width="2"/>
+    <rect x="640" y="344" width="170" height="68" rx="9" fill="#f7f9fb" stroke="#aab9c5"/><text x="725" y="384" text-anchor="middle" class="h3 nativeText">调度规划器</text>
+    <path d="M810 378H885" stroke="#c8d3db" stroke-width="2"/>
+    <rect x="885" y="344" width="205" height="68" rx="9" fill="#f7f9fb" stroke="#aab9c5"/><text x="987" y="384" text-anchor="middle" class="h3 nativeText">Case 执行引擎</text>
+    <path d="M1090 378H1165" stroke="#c8d3db" stroke-width="2"/>
+    <rect x="1165" y="344" width="180" height="68" rx="9" fill="#f7f9fb" stroke="#aab9c5"/><text x="1255" y="384" text-anchor="middle" class="h3 nativeText">结果与输出</text>
+  </g>
+
+  <!-- 03 plugins: custom -->
+  <path d="M987 436V466" class="wire"/><circle cx="987" cy="466" r="5" fill="#748899"/><path d="M260 466H1535" class="wire"/><path d="M260 466V488M685 466V488M1110 466V488M1535 466V488" class="wire"/>
+  <text x="40" y="484" class="section">03 插件平台 / PLUGGABLE</text>
+  <g filter="url(#shadow)">
+    <rect x="40" y="500" width="400" height="145" rx="11" class="customCard"/><rect x="40" y="500" width="400" height="8" rx="4" fill="#15969a"/><circle cx="83" cy="545" r="20" fill="#dff4f3"/><text x="83" y="551" text-anchor="middle" font-size="15" font-weight="740" fill="#087f83">S</text><text x="120" y="540" class="h2 customText">Scenario Plugin</text><text x="120" y="563" class="body">定义“测什么”</text><text x="75" y="611" class="body">• 负载模型、性能配置</text>
+    <rect x="460" y="500" width="400" height="145" rx="11" class="customCard"/><rect x="460" y="500" width="400" height="8" rx="4" fill="#15969a"/><circle cx="503" cy="545" r="20" fill="#dff4f3"/><text x="503" y="551" text-anchor="middle" font-size="15" font-weight="740" fill="#087f83">A</text><text x="540" y="540" class="h2 customText">Scheduler Plugin</text><text x="540" y="563" class="body">定义“由谁调度”</text><text x="495" y="611" class="body">• 调度器、Job 模板、ConfigMap</text>
+    <rect x="880" y="500" width="400" height="145" rx="11" class="customCard"/><rect x="880" y="500" width="400" height="8" rx="4" fill="#15969a"/><circle cx="923" cy="545" r="20" fill="#dff4f3"/><text x="923" y="551" text-anchor="middle" font-size="15" font-weight="740" fill="#087f83">C</text><text x="960" y="540" class="h2 customText">Feature Plugin</text><text x="960" y="563" class="body">定义“运行哪些特性”</text><text x="915" y="611" class="body">• Gang / Preempt / Reclaim、网络、亲和性</text>
+    <rect x="1300" y="500" width="450" height="145" rx="11" class="customCard"/><rect x="1300" y="500" width="450" height="8" rx="4" fill="#15969a"/><circle cx="1343" cy="545" r="20" fill="#dff4f3"/><text x="1343" y="551" text-anchor="middle" font-size="15" font-weight="740" fill="#087f83">E</text><text x="1380" y="540" class="h2 customText">Environment Plugin</text><text x="1380" y="563" class="body">定义“观察状态是什么”</text><text x="1335" y="611" class="body">• Kind 集群配置、任务提交速率</text>
+  </g>
+
+  <!-- 04 outputs: first two native, last two custom -->
+  <text x="40" y="685" class="section">04 数据产物 / REPRODUCIBLE OUTPUT</text>
+  <rect x="40" y="704" width="1710" height="132" rx="10" fill="#fff" stroke="#c8d5df"/>
+  <rect x="68" y="727" width="360" height="84" rx="42" class="nativeCard"/><text x="248" y="773" text-anchor="middle" class="h3 nativeText">记录测试环境</text>
+  <path d="M428 769H485" class="wire"/>
+  <rect x="485" y="727" width="360" height="84" rx="42" class="nativeCard"/><text x="665" y="773" text-anchor="middle" class="h3 nativeText">原始日志证据</text>
+  <path d="M845 769H902" class="wire"/>
+  <rect x="902" y="727" width="390" height="84" rx="42" fill="#edfafa" stroke="#37a5a8" stroke-width="1.8"/><text x="1097" y="758" text-anchor="middle" class="h3 customText">标准化测试报告</text><text x="1097" y="781" text-anchor="middle" class="body">吞吐量、延迟、Binding Window</text><text x="1097" y="800" text-anchor="middle" class="tiny">通过 Created、Binding 计算</text>
+  <path d="M1292 769H1340" class="wire"/>
+  <rect x="1340" y="727" width="382" height="84" rx="42" fill="#edfafa" stroke="#37a5a8" stroke-width="1.8"/><text x="1531" y="758" text-anchor="middle" class="h3 customText">结果发布</text><text x="1531" y="781" text-anchor="middle" class="body">调度器对比图、性能执行曲线</text><text x="1531" y="800" text-anchor="middle" class="tiny">从 Grafana 中导出</text>
+
+  <!-- 05 skills: custom -->
+  <text x="40" y="872" class="section">05 技能包 / SKILLS</text>
+  <g filter="url(#shadow)">
+    <rect x="40" y="890" width="390" height="78" rx="9" class="customCard"/><rect x="40" y="890" width="7" height="78" rx="3" fill="#15969a"/><text x="70" y="921" class="h3 customText">环境安装 Skill</text><text x="70" y="945" class="body">安装指定版本组件及 Kind/KWOK 等配置环境</text>
+    <rect x="460" y="890" width="390" height="78" rx="9" class="customCard"/><rect x="460" y="890" width="7" height="78" rx="3" fill="#15969a"/><text x="490" y="921" class="h3 customText">常规测试 Skill</text><text x="490" y="945" class="body">完整测试、单场景测试、测试报告与性能图</text>
+    <rect x="880" y="890" width="390" height="78" rx="9" class="customCard"/><rect x="880" y="890" width="7" height="78" rx="3" fill="#15969a"/><text x="910" y="921" class="h3 customText">性能测试 Skill</text><text x="910" y="945" class="body">指定轮次，剔除波动轮次并生成平均报告</text>
+    <rect x="1300" y="890" width="450" height="78" rx="9" class="customCard"/><rect x="1300" y="890" width="7" height="78" rx="3" fill="#15969a"/><text x="1330" y="921" class="h3 customText">构建镜像 Skill</text><text x="1330" y="945" class="body">构建自定义镜像并推送至指定私有仓库</text>
+  </g>
+  <text x="40" y="992" class="tiny">视觉说明：灰蓝表示原生执行骨架；青蓝表示本项目在测试入口、插件能力、标准化报告和自动化技能上的扩展。</text>
+</svg>
