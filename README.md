@@ -4,7 +4,7 @@ A comparative benchmark framework for Kueue, Volcano, and Apache YuniKorn. It ru
 
 ## Architecture
 
-![Flexible, pluggable Kubernetes scheduling benchmark architecture](images/benchmark-architecture.png)
+![Flexible, pluggable Kubernetes scheduling benchmark architecture](images/benchmark-image/benchmark-architecture-EN.png)
 
 ## Resident Kind Cluster
 
@@ -86,7 +86,7 @@ Each `serial-test` run executes Kueue, Volcano, and YuniKorn in that order. Befo
 
 ##### Case Execution Flow
 
-![Benchmark case execution engine](images/benchmark-execution-engine.png)
+![Benchmark case execution engine](images/benchmark-image/benchmark-execution-engine-EN.png)
 
 For Kueue, `GANG=false` uses the default Kubernetes scheduler and `GANG=true` uses Coscheduling. Volcano and YuniKorn use their native schedulers in both modes.
 
