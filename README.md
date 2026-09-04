@@ -2,6 +2,10 @@
 
 A comparative benchmark framework for Kueue, Volcano, and Apache YuniKorn. It runs the same batch workloads serially on a resident Kind + KWOK cluster, isolates scheduler components between runs, and collects API Server audit metrics and Grafana panels into timestamped result directories.
 
+## Architecture
+
+![Flexible, pluggable Kubernetes scheduling benchmark architecture](images/benchmark-architecture.png)
+
 ## Resident Kind Cluster
 
 This is the supported execution mode. The framework reuses an already provisioned cluster; it does not create or delete a Kind cluster.
@@ -79,6 +83,10 @@ make serial-test \
 ```
 
 Each `serial-test` run executes Kueue, Volcano, and YuniKorn in that order. Before every scheduler test, the framework runs only the target stack and resets the Audit Exporter with the target scheduler label. `TestInit` creates or updates the Volcano and YuniKorn ConfigMaps only when their content differs and restarts the corresponding scheduler only after such a change. After each test all eight scheduler components return to one replica, while the latest experiment configuration and Audit Exporter label remain in place.
+
+##### Case Execution Flow
+
+![Benchmark case execution engine](images/benchmark-execution-engine.png)
 
 For Kueue, `GANG=false` uses the default Kubernetes scheduler and `GANG=true` uses Coscheduling. Volcano and YuniKorn use their native schedulers in both modes.
 
