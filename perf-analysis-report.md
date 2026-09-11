@@ -155,6 +155,7 @@
 - **volcano整体调度耗时接近30s**
   - 没有满足job越少，调度时间越短的的情况；可以看到，开始阶段scheduled的pod出现的很晚，推测原因可能是单个 Gang 较大，Scheduler 需要等待整组 Pod 准备并完成整体资源判断所花费较长时间；
   - volcano调度曲线出现两次**长阶梯**，主要原因是因为要等待当前轮的 Pod 状态和事件发布 完成后才会开启下一轮调度，加上200ms的调度周期间隔，大概2～3秒。
+    - 两次长阶梯出现的时间分别是2500、5500，分别是上一轮调度周期结束(closesession)和下一轮调度周期开始(open session)的时间，Session 结束会执行 `CloseSession → JobUpdater.UpdateAll → RecordJobStatusEvent`，批量更新 Pending/Allocated Pod 状态；完成后还要等待调度周期间隔的 `200ms`，再打开下一个 Session。
 
 ### 场景8 
 

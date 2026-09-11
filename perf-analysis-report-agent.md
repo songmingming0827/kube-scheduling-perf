@@ -52,7 +52,7 @@
 
 10000个job，每个Job只有1个Pod，有以下现象：
 
-![job-submission](results/scenario-2/job-submission-agent.png)
+![job-submission](results/scenario-1/job-submission-agent.png)
 
 - created和scheduled曲线基本重合，调度阶段不是主要瓶颈，此时性能**瓶颈为创建阶段**。
   - 原因：**k8s客户端的qps/burst为100/200**；提交时以job为整体单位提交，故提交耗时最少要(10000 - Burst 200) / QPS 100 ≈ 98 秒。
@@ -68,21 +68,25 @@
 
 ![job-submission](results/scenario-2/job-submission-agent.png)
 
+![image-20260911151052976](images/agent-scheduler-master/scenario-2/perf-job-submission-agent.png)
+
 1. kueue、yunikron、volcano均适用原生job、创建job统一由kube-controller负责，所以创建pod速率基本相同；
 2. Agent Scheduler 是一个基于worker的并发调度循环 ，这里设置--scheduler-worker-count = 4，测试没有发现“conflict”现象；
 3. 分析agent-scheduler慢的原因有两个：
-   1. 结合issue：https://github.com/volcano-sh/volcano/issues/5494 提出的snapshot问题，当前 agent-scheduler每调度一个 Pod 都会全量遍历节点两次，并维护、克隆 Volcano/Kubernetes 两套 `NodeInfo`。多 worker 时每个 worker还有独立 snapshot，成本很大。优化建议如下：
+   1. **打分路径过重**，优化打分路径（已提pr解决，提升20%的吞吐）
+   2. **优化binder**，agent-scheduler相较于kube-scheduler的优势包括多个worker并发执行，但是由于binder的限制，worker数超过6后，冲突就会变多；特别是优化打分路径后，worker数超过4后（优化后吞吐量提升明显），每个调度周期变短，binding的时间变短，冲突变多，冲突就会限制scheduler的调度性能；优化建议如下：
+      1. 当前 Binder 根据 `BindGeneration` 判断，同一代节点基本只允许一个结果通过；其他结果即使节点资源仍足够，也会被判 conflict。可以设计失败则直接尝试第二、第三候选节点，不要先进入 Binder 再重新排队。
+   3. **snapshot问题 结合issue**：https://github.com/volcano-sh/volcano/issues/5494  ，当前 agent-scheduler每调度一个 Pod 都会全量遍历节点两次，并维护、克隆 Volcano/Kubernetes 两套 `NodeInfo`。多 worker 时每个 worker还有独立 snapshot，成本很大。优化建议如下：
       1. **最优**：统一两套 NodeInfo 的数据，修改snapshot为只读操作；
       2. 只复制发生变化的节点，未变化的 `NodeInfo` 直接复用。
-   2. 打分路径过于厚重，优化打分路径（已提pr）
-   3. 优化binder，agent-scheduler相较于kube-scheduler的优势就是多个worker并发执行，但是由于binder的限制，worker数超过6后，冲突就会变多；特别是优化打分路径后，worker数超过4后，冲突就会限制scheduler的调度性能；优化建议如下：
-      1. 当前 Binder 根据 `BindGeneration` 判断，同一代节点基本只允许一个结果通过；其他结果即使节点资源仍足够，也会被判 conflict。可以设计失败则直接尝试第二、第三候选节点，不要先进入 Binder 再重新排队。
 
 ### 场景3
 
 20个job，每个Job有500个Pod，有以下现象：
 
-![job-submission](/Users/csmvic/Downloads/volcano-versions/kube-scheduling-perf/results/scenario-3/job-submission-agent.png)
+![job-submission](results/scenario-3/job-submission-agent.png)
+
+![image-20260911151145915](images/agent-scheduler-master/scenario-3/perf-job-submission-agent.png)
 
 - 同场景2
 
@@ -90,7 +94,7 @@
 
 只有1个job，每个Job有10000个Pod，有以下现象：
 
-![job-submission](/Users/csmvic/Downloads/volcano-versions/kube-scheduling-perf/results/scenario-4/job-submission-agent.png)
+![job-submission](results/scenario-4/job-submission-agent.png)
 
 - kube-controller创建pod速度存在瓶颈
 
