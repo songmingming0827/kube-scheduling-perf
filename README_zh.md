@@ -105,76 +105,78 @@ make up
 
 ## 运行测试
 
-### 1. 验证基线
+运行任意测试模式前，先验证常驻集群并构建测试二进制：
 
 ```bash
 make up
 ```
 
-该命令验证常驻 Kubernetes 集群、全部调度组件和监控系统，然后在 Go 容器中编译 Kueue、Volcano 和 YuniKorn 测试二进制。
-
-### 2. 运行一个固定场景
-
-运行场景 2 和全部三套调度方案：
-
-```bash
-make scenario-2
-```
-
-只运行其中一个调度方案：
-
-```bash
-make scenario-2 SCHEDULERS=volcano
-```
-
-`SCHEDULERS` 可设为 `kueue`、`volcano` 或 `yunikorn`。每个完整场景固定按 Kueue → Volcano → YuniKorn 的顺序执行；开始一套测试前只保留目标调度栈，结束后清理测试资源并恢复空闲副本基线。
+四种测试模式共用相同的组件切换、任务提交、指标确认、结果保存和资源清理流程：
 
 ![基准用例执行流程](images/benchmark-image/benchmark-execution-engine-CN.png)
 
-Kueue 在 `GANG=false` 时使用默认 kube-scheduler，在 `GANG=true` 时使用 Coscheduling。Volcano 和 YuniKorn 始终使用各自的原生调度器。
-
-### 3. Volcano 模式
-
-`VOLCANO_MODE` 支持 `auto`、`agent` 和 `batch`：
-
-- `auto`：场景 1～4 使用 Agent Scheduler，场景 5～8 使用 Batch Scheduler。
-- `agent`：创建原生 `batch/v1` Job，由事件驱动的 Agent Scheduler 逐 Pod 调度；不支持 Gang。
-- `batch`：创建 Volcano VCJob，由 Batch Scheduler 调度；支持 Gang。
-
-例如，让八个场景中的 Volcano 全部使用 Batch Scheduler：
-
-```bash
-make VOLCANO_MODE=batch
-```
-
-选择 Volcano 时，`VOLCANO_MODE=agent` 与 `GANG=true` 的组合会被拒绝，因此不能使用 Agent 模式完成默认的场景 5～8。
-
-### 4. 运行完整矩阵
+### 1. 完整性测试
 
 ```bash
 make
 ```
 
-默认目标依次运行以下八个场景。每个场景都使用 1 个队列并创建 10000 个 Pod：
+完整性测试依次运行以下八个固定场景。每个场景均使用 1 个队列、创建 10000 个 Pod，并按 Kueue → Volcano → YuniKorn 的顺序执行，共包含 24 个 `TestBatchJob` 用例。
 
-| 场景 | 调度模式 | Job 数 | 每个 Job 的 Pod 数 | Pod 总数 | Volcano `auto` 模式 | 单调度器超时 |
-| ---: | --- | ---: | ---: | ---: | --- | ---: |
-| 1 | 非 Gang | 10000 | 1 | 10000 | Agent | 350 秒 |
-| 2 | 非 Gang | 500 | 20 | 10000 | Agent | 200 秒 |
-| 3 | 非 Gang | 20 | 500 | 10000 | Agent | 160 秒 |
-| 4 | 非 Gang | 1 | 10000 | 10000 | Agent | 190 秒 |
-| 5 | Gang | 10000 | 1 | 10000 | Batch | 430 秒 |
-| 6 | Gang | 500 | 20 | 10000 | Batch | 310 秒 |
-| 7 | Gang | 20 | 500 | 10000 | Batch | 310 秒 |
-| 8 | Gang | 1 | 10000 | 10000 | Batch | 400 秒 |
+| 场景 | 调度模式 | Job 数 | 每个 Job 的 Pod 数 | Volcano `auto` 模式 | 单调度器超时 |
+| ---: | --- | ---: | ---: | --- | ---: |
+| 1 | 非 Gang | 10000 | 1 | Agent | 350 秒 |
+| 2 | 非 Gang | 500 | 20 | Agent | 200 秒 |
+| 3 | 非 Gang | 20 | 500 | Agent | 160 秒 |
+| 4 | 非 Gang | 1 | 10000 | Agent | 190 秒 |
+| 5 | Gang | 10000 | 1 | Batch | 430 秒 |
+| 6 | Gang | 500 | 20 | Batch | 310 秒 |
+| 7 | Gang | 20 | 500 | Batch | 310 秒 |
+| 8 | Gang | 1 | 10000 | Batch | 400 秒 |
 
-完整矩阵共包含 8 个场景、3 套调度方案和 24 个 `TestBatchJob` 用例。
+如需让 Volcano 在八个场景中全部使用 Batch Scheduler：
 
-完整性测试通过至少需要同时满足：顶层 `make` 和最终 `make down` 均成功、24/24 个用例无失败或超时、24/24 个 Prometheus 指标抓取屏障通过、八个场景结果目录均已更新、测试资源清理完成，并且集群恢复固定空闲基线。单个 Dashboard 图片保存失败会被记录为非阻塞异常，不会单独导致测试失败。
+```bash
+make VOLCANO_MODE=batch
+```
 
-`serial-test` 内部用分号串行各调度器子阶段，中间步骤失败后后续步骤仍可能继续。因此不能只根据顶层退出码判断结果，必须同时检查用例、指标屏障、结果目录和最终基线。
+完整性测试通过至少需要：顶层 `make` 和最终 `make down` 成功、24/24 个用例及指标抓取屏障通过、八个结果目录更新、测试资源清零并恢复空闲基线。Dashboard 图片保存失败只记录为非阻塞异常。
 
-### 5. 运行自定义单调度器场景
+`serial-test` 的子阶段使用分号串行，中间失败后后续步骤仍可能继续，因此不能只根据顶层退出码判断结果。
+
+### 2. 固定场景测试模式
+
+运行一个固定场景和全部三套调度方案：
+
+```bash
+make scenario-2
+```
+
+`scenario-1` 至 `scenario-8` 对应上表中的八个场景。每个场景按 Kueue → Volcano → YuniKorn 串行执行并生成三调度器对比结果。Kueue 在非 Gang 场景使用默认 kube-scheduler，在 Gang 场景使用 Coscheduling。
+
+### 3. 运行单调度器单场景模式
+
+只运行场景 2 的 Volcano：
+
+```bash
+make scenario-2 SCHEDULERS=volcano
+```
+
+`SCHEDULERS` 必须是 `kueue`、`volcano` 或 `yunikorn`。Volcano 还可指定调度器模式：
+
+- `auto`：场景 1～4 使用 Agent，场景 5～8 使用 Batch。
+- `agent`：使用原生 `batch/v1` Job，不支持 Gang。
+- `batch`：使用 Volcano VCJob，支持 Gang。
+
+例如，使用 Volcano Batch Scheduler 运行场景 2：
+
+```bash
+make scenario-2 SCHEDULERS=volcano VOLCANO_MODE=batch
+```
+
+单调度器模式只更新对应调度器的结果目录，不生成或覆盖三调度器相对 Dashboard。选择 Volcano 时，`agent` 与 `GANG=true` 的组合会被拒绝。
+
+### 4. 运行自定义场景单调度器测试模式
 
 `scenario-custom` 复用与固定场景相同的准备、测试、指标确认、清理和结果保存流程，但只允许运行一个调度器，也不会生成三调度器相对 Dashboard。
 
@@ -199,7 +201,7 @@ make scenario-custom \
 
 结果写入 `results/scenario-custom/`。重复运行会更新其中本轮调度器的子目录以及 `envs.txt`、`result-window.txt`，不会修改场景 1～8；其他调度器已有的子目录会保留。`SCHEDULERS` 必须且只能包含 `kueue`、`volcano` 或 `yunikorn` 中的一个。
 
-### 6. 查看结果
+### 5. 查看结果
 
 完整场景使用稳定目录保存结果，并替换当前模式生成的制品：
 
@@ -231,7 +233,7 @@ results/
 http://<benchmark-server>:31005/grafana/d/perf/?theme=light
 ```
 
-### 7. 从中断中恢复
+### 6. 从中断中恢复
 
 ```bash
 make down
@@ -239,7 +241,9 @@ make down
 
 该目标会启用全部调度组件和 Audit Exporter，清理 Kueue、Volcano、YuniKorn 测试资源，等待固定副本基线，并再次验证基础集群。它不依赖之前保存的运行状态。
 
-## 基准参数
+## 参考信息
+
+### 基准参数
 
 | 变量 | 默认值 | 说明 |
 | --- | ---: | --- |
@@ -260,15 +264,11 @@ make down
 
 影响型和关键型工作负载的其他变量定义在 [Makefile](Makefile) 顶部。
 
-## 指标采集
+### 指标采集
 
-定制的 `kube-apiserver-audit-exporter` 读取 API Server 审计事件，并导出带调度器标签的 Prometheus 指标。每套调度器开始测试前，框架会停止旧 Exporter，再以本轮 `cluster` 标签和 `--start-at-end` 启动新进程，从当前审计文件末尾开始读取。
+本项目使用 [kube-apiserver-audit-exporter](https://github.com/songmingming0827/kube-apiserver-audit-exporter) 将 kube-apiserver 审计事件转换为 Prometheus 指标，用于统计调度延迟、API 请求和工作负载调度情况。具体的工作原理、指标定义、配置和部署方式由该仓库统一维护，此处不再展开。
 
-框架不会为了隔离测试而删除或截断主审计日志，也不会重启 API Server。Prometheus 指标用于抓取屏障和 Dashboard；调度器报告则直接读取本轮审计文件的 inode 和字节范围，并兼容测试期间的一次正常日志轮转。
-
-YuniKorn 的工作负载计数会关联 Controller Manager 创建 Pod 与 binding 事件，排除 placeholder Pod。相对 Dashboard 以三套方案首次创建实际工作 Pod 的时刻对齐共同 T+0，用于比较任务创建和调度速度；Audit Exporter 每 `100ms` 轮询审计文件，ServiceMonitor 每 `100ms` 抓取一次，Dashboard 的最小查询步长也是 `100ms`。
-
-## 调度方案
+### 调度方案
 
 | 调度方案 | 组件与行为 |
 | --- | --- |
@@ -278,7 +278,7 @@ YuniKorn 的工作负载计数会关联 Controller Manager 创建 Pod 与 bindin
 
 三套测试分别使用 `bench-kueue`、`bench-volcano` 和 `bench-yunikorn` 命名空间。运行一套方案时，其他调度栈会缩容为 0；测试结束后清理该命名空间和相关集群级资源，再将全部调度组件恢复为 1 个副本。
 
-## 仓库结构
+### 仓库结构
 
 ```text
 deploy/resident/            # 版本化常驻集群部署包
@@ -297,7 +297,7 @@ doc/                        # 评审、分析和历史测试文档
 - [常驻集群代码评审](doc/RESIDENT_CLUSTER_CODE_REVIEW.md)
 - [历史完整测试报告](doc/RESIDENT_CLUSTER_FULL_TEST_REPORT.md)
 
-## 适用边界与风险
+### 适用边界与风险
 
 - 测试运行流程依赖上述固定基线；`make setup` 只初始化本文约定的 Linux + Kind + KWOK 环境，不是通用现有 Kubernetes 集群安装器。
 - 当前只有一套常驻集群。删除 Kind 集群会同时删除 etcd 和集群状态；不要为了重新运行测试或部署脚本而删除健康集群。
@@ -307,9 +307,9 @@ doc/                        # 评审、分析和历史测试文档
 - 宿主机的 `31003`、`31004`、`31005` 均绑定到 `0.0.0.0`，公网可达性取决于防火墙和云安全组；`31004` 和 `31005` 访问的是启用匿名 Viewer 的 Grafana。应限制这三个端口的访问来源。
 - 当前审计策略只记录性能分析所需的资源和操作，不是完整的安全审计策略。
 
-## 故障排查
+### 故障排查
 
-### Too Many Open Files
+#### Too Many Open Files
 
 Linux 主机出现 `Too many open files` 时，可提高 inotify 限制：
 
