@@ -1,5 +1,7 @@
 # Kubernetes Scheduling Performance Benchmark
 
+English | [简体中文](README_zh.md)
+
 A comparative benchmark framework for Kueue, Volcano, and Apache YuniKorn. It runs the same batch workloads serially on a resident Kind + KWOK cluster, isolates scheduler components between runs, and collects API Server audit metrics and Grafana panels into timestamped result directories.
 
 ## Architecture

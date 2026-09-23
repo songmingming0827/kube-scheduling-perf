@@ -82,6 +82,8 @@ make scenario-custom \
   PODS_SIZE_PER_JOB=16 \
   GANG=false \
   TEST_TIMEOUT_SECONDS=300
+  preempt=false
+  
 ```
 
 该场景运行也不更新三调度器相对 Dashboard，也不覆盖已有的完整对比结果。结果独立写入如下目录，重复运行只覆盖 `scenario-custom`，不影响 scenario-1～8。
