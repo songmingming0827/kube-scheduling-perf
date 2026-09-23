@@ -2,7 +2,7 @@
 
 English | [简体中文](README_zh.md)
 
-A comparative benchmark framework for Kueue, Volcano, and Apache YuniKorn. It runs the same batch workloads serially on a resident Kind + KWOK cluster, isolates scheduler components between runs, and collects API Server audit metrics and Grafana panels into timestamped result directories.
+A comparative benchmark framework for Kueue, Volcano, and Apache YuniKorn. It runs identical batch workloads serially on a reusable Kind + KWOK cluster, isolates scheduler components between runs, and stores API Server audit metrics, scheduling statistics, and Grafana panels in stable scenario result directories.
 
 ## Architecture
 
@@ -10,118 +10,183 @@ A comparative benchmark framework for Kueue, Volcano, and Apache YuniKorn. It ru
 
 ## Resident Kind Cluster
 
-This is the supported execution mode. The framework reuses an already provisioned cluster; it does not create or delete a Kind cluster.
+This is currently the only supported execution mode. A fresh installation creates one Kind control-plane node and 1000 KWOK nodes, then installs all three scheduler stacks and the monitoring components. Benchmark runs switch components and clean experiment resources without rebuilding the cluster. Generic existing Kubernetes clusters are not yet supported.
 
 ### Prerequisites
 
-- A healthy resident cluster matching [CLUSTER_DEPLOYMENT_RECORD.md](CLUSTER_DEPLOYMENT_RECORD.md)
-- Docker, Make, curl, and jq
-- Cluster-admin access through `KUBECONFIG`
-- The configured `kubectl` binary and resident deployment bundle
-- Enough capacity for 1000 KWOK nodes and the monitoring stack; the validated baseline uses at least 16 CPU cores and should have at least 32 GiB memory
+- Docker, Kind `v0.32.0`, Helm 3, curl, jq, Make, tar, sha256sum, ss, and install
+- Recommended reference host: Ubuntu 24.04, 32 logical CPUs, and 62 GiB memory
 
-The validated defaults are:
-
-| Setting | Default |
-| --- | --- |
-| Kind cluster | `volcano-benchmark-1348` |
-| Kubernetes | `v1.34.8` |
-| Nodes | 1 control-plane + 1000 KWOK nodes |
-| Kubeconfig | `/root/benchmark-1348-deploy/kubeconfig` |
-| kubectl | `/root/benchmark-1348-deploy/bin/kubectl` |
-| Deployment bundle | `/root/benchmark-1348-deploy` |
-
-Validated component versions:
-
-| Component | Version |
-| --- | --- |
-| Kind | `v0.32.0` |
-| Kubernetes / kubectl | `v1.34.8` |
-| KWOK | `v0.7.0` |
-| Volcano | `v1.15.1` |
-| Kueue | `v0.19.0` |
-| Scheduler Plugins / Coscheduling | Scheduler `v0.34.7`; Controller `v0.34.7-qpsfix` |
-| Apache YuniKorn | `v1.9.0` |
-| kube-prometheus-stack | `88.1.3` |
-
-Override `KIND_CLUSTER_NAME`, `KUBECONFIG`, `KUBECTL`, or `RESIDENT_DEPLOY_DIR` when using an equivalent resident deployment at different paths.
-
-The control-plane kube-scheduler and kube-controller-manager both use CPU request/limit `500m/8` and Kubernetes client QPS/Burst `1000/1000`. The Controller image is based on the official `v0.34.7` tag with upstream QPS/Burst fix `4cd26c48`; no dependency version was upgraded.
-
-### Quick Start
+### One-Command Installation (Fresh Cluster)
 
 ```bash
-# Validate the resident cluster and build the three test binaries.
-make up
-
-# Run all eight benchmark scenarios against all three scheduler stacks.
-make
-
-# Recover from an interrupted run and converge to the resident replica baseline.
-make down
-```
-
-`make up` only validates the existing cluster, schedulers, and monitoring stack. `make down` removes benchmark resources and converges all scheduler components and the Audit Exporter to one replica; it does not delete the cluster, rewrite scheduler ConfigMaps, or remove archived results.
-
-### Step-by-Step
-
-#### 1. Validate the Baseline
-
-```bash
+sudo -i
+cd /path/to/kube-scheduling-perf
+make setup
 make up
 ```
 
-The command verifies the resident Kubernetes cluster, all scheduler components, and monitoring, then compiles the Kueue, Volcano, and YuniKorn test binaries in a Go container.
+`make setup` stages the deployment bundle, checks the host, creates a 100-node canary environment, installs and smoke-tests the scheduler and monitoring stacks, scales to 1000 KWOK nodes, and performs final verification. `make up` verifies the cluster and builds the test binaries.
 
-#### 2. Run One Scenario
+> This command is for fresh deployments only. It refuses to run when a cluster with the same name already exists and never deletes or rolls back a cluster automatically. If Kind creation stops partway through, inspect and complete the control-plane configuration, or explicitly delete the incomplete cluster only after confirming that it contains no data to preserve.
+
+### Step-by-Step Installation
+
+Run all commands from the repository root in a root shell.
+
+#### 1. Prepare the Deployment Bundle
 
 ```bash
-make serial-test \
-  QUEUES_SIZE=1 \
-  JOBS_SIZE_PER_QUEUE=500 \
-  PODS_SIZE_PER_JOB=20 \
-  GANG=false \
-  TEST_TIMEOUT_SECONDS=200
+make prepare-resident
 ```
 
-Each `serial-test` run executes Kueue, Volcano, and YuniKorn in that order. Before every scheduler test, the framework runs only the target stack and resets the Audit Exporter with the target scheduler label. `TestInit` creates or updates the Volcano and YuniKorn ConfigMaps only when their content differs and restarts the corresponding scheduler only after such a change. After each test all eight scheduler components return to one replica, while the latest experiment configuration and Audit Exporter label remain in place.
+Stages the deployment bundle, checks the host, and prepares kubectl plus scheduler and monitoring artifacts.
 
-##### Case Execution Flow
+#### 2. Create the Kind Cluster
+
+```bash
+make create-cluster
+```
+
+Creates the control plane and enables API Server auditing.
+
+#### 3. Create KWOK Nodes
+
+```bash
+make create-nodes
+```
+
+Installs KWOK and creates and verifies 100 canary nodes.
+
+#### 4. Install Schedulers
+
+```bash
+make install-schedulers
+```
+
+Installs Kueue/Coscheduling, Volcano, and YuniKorn, then runs scheduler smoke tests.
+
+#### 5. Install Audit Exporter and Monitoring
+
+```bash
+make install-monitoring
+```
+
+Installs Audit Exporter, Prometheus, Grafana, and the image renderer.
+
+#### 6. Install Grafana Ingress
+
+```bash
+make install-grafana-ingress
+```
+
+#### 7. Scale and Verify
+
+```bash
+make scale-nodes
+make verify-resident
+make up
+```
+
+Scales to 1000 KWOK nodes, verifies the cluster, scheduler stacks, monitoring, and Ingress, and then builds the test binaries. Smoke tests create and remove real resources, while node scaling only adds missing nodes. See the [deployment bundle documentation](deploy/resident/README.md) for recovery after a partial installation. Grafana allows anonymous access, so restrict external access to ports `31003`, `31004`, and `31005`.
+
+### Fixed Baseline
+
+| Item | Baseline |
+| --- | --- |
+| Cluster | `volcano-benchmark-1348`; Kubernetes `v1.34.8` |
+| Nodes | 1 control-plane node + 1000 KWOK `v0.7.0` nodes |
+| Scheduler stacks | Volcano `v1.15.1`; Kueue `v0.19.0`; Coscheduling `v0.34.7`; YuniKorn `v1.9.0` |
+| Monitoring | kube-prometheus-stack `88.1.3` |
+| Deployment directory | `/root/benchmark-1348-deploy` |
+| Endpoints | Prometheus `31003`; Grafana `31004`; Grafana Ingress `31005` |
+
+The installation path is currently fixed. For an equivalent manually provisioned environment, benchmark execution may override `KIND_CLUSTER_NAME`, `KUBECONFIG`, `KUBECTL`, and `RESIDENT_DEPLOY_DIR`. See [CLUSTER_DEPLOYMENT_RECORD.md](CLUSTER_DEPLOYMENT_RECORD.md) for the complete versions, resource baseline, and known risks.
+
+## Running Benchmarks
+
+Before using any test mode, verify the resident cluster and build the test binaries:
+
+```bash
+make up
+```
+
+All four test modes share the same component switching, workload submission, metrics barrier, result saving, and resource cleanup flow:
 
 ![Benchmark case execution engine](images/benchmark-image/benchmark-execution-engine-EN.png)
 
-For Kueue, `GANG=false` uses the default Kubernetes scheduler and `GANG=true` uses Coscheduling. Volcano and YuniKorn use their native schedulers in both modes.
-
-#### 3. Run the Full Matrix
+### 1. Integrity Test
 
 ```bash
 make
 ```
 
-The default target runs these eight scenarios:
+The integrity test runs the following eight fixed scenarios. Every scenario uses one queue and creates 10000 Pods, runs Kueue → Volcano → YuniKorn in order, and contributes three of the 24 total `TestBatchJob` cases.
 
-| Scenario | Mode | Jobs | Pods per job | Total pods |
-| ---: | --- | ---: | ---: | ---: |
-| 1 | Non-Gang | 10000 | 1 | 10000 |
-| 2 | Non-Gang | 500 | 20 | 10000 |
-| 3 | Non-Gang | 20 | 500 | 10000 |
-| 4 | Non-Gang | 1 | 10000 | 10000 |
-| 5 | Gang | 10000 | 1 | 10000 |
-| 6 | Gang | 500 | 20 | 10000 |
-| 7 | Gang | 20 | 500 | 10000 |
-| 8 | Gang | 1 | 10000 | 10000 |
+| Scenario | Mode | Jobs | Pods per job | Volcano `auto` mode | Per-scheduler timeout |
+| ---: | --- | ---: | ---: | --- | ---: |
+| 1 | Non-Gang | 10000 | 1 | Agent | 350s |
+| 2 | Non-Gang | 500 | 20 | Agent | 200s |
+| 3 | Non-Gang | 20 | 500 | Agent | 160s |
+| 4 | Non-Gang | 1 | 10000 | Agent | 190s |
+| 5 | Gang | 10000 | 1 | Batch | 430s |
+| 6 | Gang | 500 | 20 | Batch | 310s |
+| 7 | Gang | 20 | 500 | Batch | 310s |
+| 8 | Gang | 1 | 10000 | Batch | 400s |
 
-The complete matrix contains 24 `TestBatchJob` cases.
+To use the Volcano Batch Scheduler in all eight scenarios:
 
-#### Run a Custom Single-Scheduler Scenario
+```bash
+make VOLCANO_MODE=batch
+```
 
-`scenario-custom` reuses the same prepare, test, metrics, cleanup, and result-saving flow as the numbered scenarios, but runs exactly one scheduler and does not generate a relative Dashboard. Its defaults run the Volcano Batch Scheduler with 50 Jobs, 16 task replicas per Job, and non-Gang scheduling:
+At minimum, a passing integrity test requires successful top-level `make` and final `make down` commands, 24/24 passing cases and metrics barriers, all eight result directories updated, zero residual test resources, and restoration of the idle baseline. A Dashboard image failure is recorded as a non-blocking anomaly.
+
+The `serial-test` substeps are joined with semicolons, so later steps can continue after an intermediate failure. Do not determine success from the top-level exit code alone.
+
+### 2. Fixed-Scenario Test Mode
+
+Run one fixed scenario against all three scheduler stacks:
+
+```bash
+make scenario-2
+```
+
+`scenario-1` through `scenario-8` correspond to the table above. Each scenario runs Kueue → Volcano → YuniKorn serially and produces a three-scheduler comparison. Kueue uses the default kube-scheduler for non-Gang scenarios and Coscheduling for Gang scenarios.
+
+### 3. Single-Scheduler, Fixed-Scenario Test Mode
+
+Run only Volcano for scenario 2:
+
+```bash
+make scenario-2 SCHEDULERS=volcano
+```
+
+`SCHEDULERS` must be `kueue`, `volcano`, or `yunikorn`. Volcano also supports an explicit scheduler mode:
+
+- `auto`: Agent for scenarios 1–4 and Batch for scenarios 5–8.
+- `agent`: native `batch/v1` Jobs; Gang is unsupported.
+- `batch`: Volcano VCJobs with Gang support.
+
+For example, run scenario 2 with the Volcano Batch Scheduler:
+
+```bash
+make scenario-2 SCHEDULERS=volcano VOLCANO_MODE=batch
+```
+
+Single-scheduler mode updates only that scheduler's result directory and does not generate or replace the three-scheduler relative Dashboard. When Volcano is selected, `agent` combined with `GANG=true` is rejected.
+
+### 4. Custom-Scenario, Single-Scheduler Test Mode
+
+`scenario-custom` reuses the same preparation, test, metrics, cleanup, and result-saving flow, but accepts exactly one scheduler and does not generate a relative Dashboard.
+
+By default it runs the Volcano Batch Scheduler with 50 Jobs, 16 Pods per Job, and Gang disabled:
 
 ```bash
 make scenario-custom
 ```
 
-All custom defaults can be overridden from the command line. For example:
+Override the workload from the command line:
 
 ```bash
 make scenario-custom \
@@ -130,107 +195,115 @@ make scenario-custom \
   JOBS_SIZE_PER_QUEUE=100 \
   PODS_SIZE_PER_JOB=8 \
   GANG=true \
+  PREEMPTION=false \
   TEST_TIMEOUT_SECONDS=600
 ```
 
-The result is written to `results/scenario-custom/` and replaces the previous custom result. Numbered scenario results are not modified. `SCHEDULERS` must contain exactly one of `kueue`, `volcano`, or `yunikorn`.
+Results are written to `results/scenario-custom/`. Repeated runs update the selected scheduler directory plus `envs.txt` and `result-window.txt` without changing scenarios 1–8; result directories left by other custom scheduler runs are retained. `SCHEDULERS` must contain exactly one of `kueue`, `volcano`, or `yunikorn`.
 
-The latest validated run completed all 24 cases successfully in `44m51.248s` (`2026-08-11 12:05:35` to `2026-08-11 12:50:26` CST). Audit Exporter and the Grafana dashboards used a `100ms` sampling/query step, and all 24 Prometheus capture barriers passed. Exact scenario and scheduler timestamps are recorded in [RESIDENT_CLUSTER_FULL_TEST_REPORT.md](RESIDENT_CLUSTER_FULL_TEST_REPORT.md#21-100ms-采集与单相对面板归档完整测试通过).
+### 5. View Results
 
-#### 4. View Results
-
-Every scenario writes to a stable directory, replaces the current mode's previous artifacts, and retains the other mode's Dashboard image:
+Full scenario runs use stable result directories and replace artifacts for the active Volcano mode:
 
 ```text
 results/
 └── scenario-<1..8>/
     ├── envs.txt
     ├── result-window.txt
-    ├── job-submission-agent.png  # VOLCANO_MODE=agent
-    ├── job-submission.png        # VOLCANO_MODE=batch
+    ├── job-submission-agent.png   # Volcano Agent mode
+    ├── job-submission.png         # Volcano Batch mode
     ├── kueue/
-    ├── volcano-agent/  # VOLCANO_MODE=agent
-    ├── volcano/        # VOLCANO_MODE=batch
+    │   ├── window.txt
+    │   └── report.txt
+    ├── volcano-agent/ or volcano/ # Active Volcano mode
+    │   ├── window.txt
+    │   └── report.txt
     └── yunikorn/
+        ├── window.txt
+        └── report.txt
 ```
 
-Each run writes exactly one of `volcano-agent/` or `volcano/`, according to the effective Volcano mode.
-Agent and Batch Dashboard images may coexist in the scenario directory; a run replaces only its mode's image and preserves the other one.
+A full three-scheduler run saves either `volcano-agent/` or `volcano/` for the active mode. Agent and Batch Dashboard images may coexist; a new run replaces only the active mode's image. If a later single-scheduler run uses the other Volcano mode, both Volcano report directories may coexist.
 
-The persistent Grafana endpoint is:
+Each `report.txt` computes Pod create-to-bind P50, P90, and P99 latency, the scheduled Pod count, throughput, and the throughput window directly from the run's API Server audit-log byte range rather than from Prometheus Histogram estimates. A numbered single-scheduler run replaces only its scheduler result directory and leaves the full-comparison metadata and relative Dashboard unchanged.
+
+Persistent Grafana endpoint:
 
 ```text
 http://<benchmark-server>:31005/grafana/d/perf/?theme=light
 ```
 
-The persistent endpoint is the standard Dashboard access path; no local SSH forwarding Skill is required.
-
-#### 5. Recover an Interrupted Run
+### 6. Recover from an Interrupted Run
 
 ```bash
 make down
 ```
 
-Use this when a scheduler run is interrupted. The target enables all scheduler components and the Audit Exporter at one replica, cleans all benchmark resources, waits for the fixed replica baseline, and verifies the base cluster. It does not require saved resident state.
-
-## Benchmark Parameters
-
-| Variable | Default | Description |
-| --- | ---: | --- |
-| `QUEUES_SIZE` | `1` | Number of benchmark queues |
-| `JOBS_SIZE_PER_QUEUE` | `1` | Jobs created in each queue |
-| `PODS_SIZE_PER_JOB` | `1` | Pods created by each job |
-| `CPU_REQUEST_PER_POD` | `1` | CPU request per pod |
-| `MEMORY_REQUEST_PER_POD` | `1Gi` | Memory request per pod |
-| `CPU_PER_QUEUE` | `10000` | Queue CPU capacity |
-| `MEMORY_PER_QUEUE` | `10000Gi` | Queue memory capacity |
-| `GANG` | `false` | Enable gang scheduling semantics |
-| `PREEMPTION` | `false` | Enable preemption scenarios |
-| `TEST_TIMEOUT_SECONDS` | `3600` | Go test timeout for one scheduler case |
-| `CLEANUP_TIMEOUT_SECONDS` | `600` | Maximum confirmation wait for Kueue namespaced cleanup |
-
-Additional impacting and critical workload variables are defined at the top of the [Makefile](Makefile).
-
-## Existing Cluster
-
-Generic existing-cluster support is not implemented. The current Makefile assumes the resident cluster has the namespaces, CRDs, scheduler Deployments, Audit Exporter, Prometheus, Grafana, and verification scripts documented in [CLUSTER_DEPLOYMENT_RECORD.md](CLUSTER_DEPLOYMENT_RECORD.md). Another cluster can be used only after providing an equivalent deployment and overriding the resident paths; this is not a portable bootstrap workflow yet.
+This enables all scheduler components and Audit Exporter, removes Kueue, Volcano, and YuniKorn test resources, waits for the fixed replica baseline, and verifies the base cluster. It does not depend on saved pre-run state.
 
 ## Reference
 
+### Benchmark Parameters
+
+| Variable | Default | Description |
+| --- | ---: | --- |
+| `SCHEDULERS` | `kueue volcano yunikorn` | Scheduler stacks and execution order |
+| `VOLCANO_MODE` | `auto` | Volcano mode: `auto`, `agent`, or `batch` |
+| `QUEUES_SIZE` | `1` | Number of benchmark queues |
+| `JOBS_SIZE_PER_QUEUE` | `1` | Jobs created in each queue |
+| `PODS_SIZE_PER_JOB` | `1` | Pods created by each Job |
+| `CPU_REQUEST_PER_POD` | `1` | CPU request per Pod |
+| `MEMORY_REQUEST_PER_POD` | `1Gi` | Memory request per Pod |
+| `CPU_PER_QUEUE` | `10000` | Queue CPU capacity |
+| `MEMORY_PER_QUEUE` | `10000Gi` | Queue memory capacity |
+| `GANG` | `false` | Enable Gang scheduling semantics |
+| `PREEMPTION` | `false` | Enable preemption scenarios |
+| `TEST_TIMEOUT_SECONDS` | `3600` | Go test timeout for one scheduler case |
+| `CLEANUP_TIMEOUT_SECONDS` | `600` | Maximum wait for Kueue namespace cleanup |
+| `RESULT_METRICS_TIMEOUT_SECONDS` | `240` | Maximum wait for stable metrics to be scraped by Prometheus |
+
+Additional impacting and critical workload variables are defined at the top of the [Makefile](Makefile).
+
+### Metrics Collection
+
+This project uses [kube-apiserver-audit-exporter](https://github.com/songmingming0827/kube-apiserver-audit-exporter) to convert kube-apiserver audit events into Prometheus metrics for scheduling latency, API requests, and workload scheduling statistics. Its design, metric definitions, configuration, and deployment are maintained in that repository.
+
 ### Scheduler Stacks
 
-| Stack | Components |
+| Stack | Components and behavior |
 | --- | --- |
-| Kueue | Kueue Controller, default kube-scheduler for non-Gang tests, Coscheduling Scheduler and Controller for Gang tests |
-| Volcano | Volcano Batch Scheduler, Agent Scheduler, Controllers, and Admission |
+| Kueue | Kueue Controller; default kube-scheduler for non-Gang scenarios and Coscheduling Scheduler and Controller for Gang scenarios |
+| Volcano | Agent Scheduler and Admission in Agent mode; Batch Scheduler, Controllers, and Admission in Batch mode |
 | YuniKorn | YuniKorn Scheduler and Admission Controller |
 
-### Metrics
-
-The customized `kube-apiserver-audit-exporter` reads API Server audit events and exports scheduler-labelled Prometheus metrics. Its YuniKorn workload counter correlates Controller Manager Pod creation with binding events so placeholder Pods are excluded without subtracting unrelated counters. The Grafana `perf` Dashboard compares scheduling latency, API call totals and rates, pods scheduled, and batch jobs completed across the three scheduler stacks.
-
-The resident API Server audit file is still reset between scheduler runs and consumed by Audit Exporter, but it is no longer copied into result directories. Prometheus metrics and the relative Job Submission panel are the benchmark outputs.
+The three benchmark stacks use the `bench-kueue`, `bench-volcano`, and `bench-yunikorn` namespaces. While one stack is under test, all other scheduler stacks are scaled to zero. After the test, the framework cleans namespaced and related cluster-scoped resources and restores all scheduler components to one replica.
 
 ### Repository Layout
 
 ```text
-deploy/grafana-ingress/     # Persistent Grafana ingress
-deploy/resident/            # Versioned resident cluster deployment bundle
-hack/                       # Result collection and helper scripts
-test/                       # Kueue, Volcano, YuniKorn tests and shared utilities
-results/                    # Generated benchmark artifacts
+Makefile                    # Environment setup, benchmark, cleanup, and result-archiving entry point
+deploy/resident/            # Versioned resident-cluster deployment bundle
+deploy/grafana-ingress/     # Persistent Grafana Ingress
+hack/                       # Result collection, Dashboard, and helper scripts
+test/                       # Kueue, Volcano, and YuniKorn tests and shared utilities
+results/                    # Generated benchmark results
+doc/                        # Reviews, analyses, and historical test documents
 ```
 
-Detailed deployment history and the latest complete validation are recorded in [CLUSTER_DEPLOYMENT_RECORD.md](CLUSTER_DEPLOYMENT_RECORD.md) and [RESIDENT_CLUSTER_FULL_TEST_REPORT.md](RESIDENT_CLUSTER_FULL_TEST_REPORT.md).
+Further reading:
 
-## Troubleshooting
+- [Integrity test report — Volcano Batch Scheduler](perf-analysis-report.md)
+- [Integrity test report — Volcano Agent Scheduler](perf-analysis-report-agent.md)
+- [Resident cluster deployment bundle](deploy/resident/README.md)
+- [Resident cluster design details](RESIDENT_CLUSTER_PLAN_DETAIL.md)
+- [Cluster deployment record](CLUSTER_DEPLOYMENT_RECORD.md)
+- [Historical full test report](doc/RESIDENT_CLUSTER_FULL_TEST_REPORT.md)
 
-### Too Many Open Files
+### Scope and Risks
 
-On Linux, increase inotify limits when the host reports `Too many open files`:
-
-```bash
-echo fs.inotify.max_user_watches=655360 | sudo tee -a /etc/sysctl.conf
-echo fs.inotify.max_user_instances=1280 | sudo tee -a /etc/sysctl.conf
-sudo sysctl -p
-```
+- Benchmark execution depends on the fixed baseline above. `make setup` provisions the documented Linux + Kind + KWOK environment; it is not a generic installer for existing Kubernetes clusters.
+- Only 255 of the 1000 KWOK nodes have unique PodCIDRs. This environment is suitable for virtual scheduling benchmarks, not real containers, Pod networking, or cross-Pod communication.
+- Long control-plane node-monitoring intervals reduce virtual-node overhead but significantly delay real node-failure detection. Do not use this cluster as a general-purpose Kubernetes environment.
+- Prometheus and Grafana use `emptyDir`; Pod deletion or recreation loses historical metrics and manually stored state. Export data separately when long-term retention is required.
+- Host ports `31003`, `31004`, and `31005` bind to `0.0.0.0`; public reachability depends on the firewall and cloud security groups. Grafana on `31004` and `31005` allows anonymous Viewer access. Restrict all three ports as needed.
+- The audit policy records only resources and operations required for performance analysis; it is not a complete security audit policy.
