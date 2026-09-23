@@ -268,6 +268,14 @@ Additional impacting and critical workload variables are defined at the top of t
 
 This project uses [kube-apiserver-audit-exporter](https://github.com/songmingming0827/kube-apiserver-audit-exporter) to convert kube-apiserver audit events into Prometheus metrics for scheduling latency, API requests, and workload scheduling statistics. Its design, metric definitions, configuration, and deployment are maintained in that repository.
 
+### Benchmark Variability
+
+To reduce throughput and latency variation across repeated benchmark runs, the baseline standardizes three areas:
+
+1. **Fixed Volcano scheduling interval**: the Batch Scheduler uses a fixed `200ms` `schedule-period`, while the Agent Scheduler remains event-driven, avoiding differences caused by scheduling-cycle configuration.
+2. **Isolated Pod deletion effects**: VCJob TTL and cleanup behavior are fixed, and each run waits for test resources to reach zero, reducing interference from Garbage Collector deletion events and Scheduler cache updates in subsequent runs.
+3. **Reduced KWOK lifecycle concurrency**: `podPlayStageParallelism` is fixed at `1`, spreading Running, Succeeded, and Deleted state updates over time and reducing cache and runtime contention from concentrated `UpdatePod` events.
+
 ### Scheduler Stacks
 
 | Stack | Components and behavior |

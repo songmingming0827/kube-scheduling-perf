@@ -268,6 +268,14 @@ make down
 
 本项目使用 [kube-apiserver-audit-exporter](https://github.com/songmingming0827/kube-apiserver-audit-exporter) 将 kube-apiserver 审计事件转换为 Prometheus 指标，用于统计调度延迟、API 请求和工作负载调度情况。具体的工作原理、指标定义、配置和部署方式由该仓库统一维护，此处不再展开。
 
+### Benchmark 波动性说明
+
+为减少重复测试之间的吞吐和延迟波动，当前基线统一了以下三项：
+
+1. **固定 Volcano 调度周期**：Batch Scheduler 的 `schedule-period` 固定为 `200ms`，Agent Scheduler 保持事件驱动，避免调度周期配置差异影响结果。
+2. **隔离 Pod 删除干扰**：固定 VCJob TTL 和清理流程，并在每轮结束后等待测试资源归零，减少 Garbage Collector 删除事件和 Scheduler cache 更新对后续测试的干扰。
+3. **降低 KWOK 状态推进并发**：将 `podPlayStageParallelism` 固定为 `1`，摊平 Pod 的 Running、Succeeded 和 Deleted 状态更新，减少集中 `UpdatePod` 带来的 cache 与运行时竞争。
+
 ### 调度方案
 
 | 调度方案 | 组件与行为 |
