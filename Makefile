@@ -45,6 +45,8 @@ KUBECONFIG ?= /root/benchmark-1348-deploy/kubeconfig
 KUBECTL ?= /root/benchmark-1348-deploy/bin/kubectl
 KUBECTL_CMD = $(KUBECTL) --kubeconfig $(KUBECONFIG)
 RESIDENT_DEPLOY_DIR ?= /root/benchmark-1348-deploy
+RESIDENT_SCRIPTS_DIR = $(RESIDENT_DEPLOY_DIR)/scripts
+RESIDENT_INGRESS_DIR = $(RESIDENT_DEPLOY_DIR)/grafana-ingress
 AUDIT_EXPORTER_NAMESPACE ?= kube-system
 AUDIT_EXPORTER_DEPLOYMENT ?= kube-apiserver-audit-exporter
 AUDIT_EXPORTER_CONTAINER ?= exporter
@@ -91,6 +93,57 @@ default: ensure-directories
 	$(MAKE) scenario-6
 	$(MAKE) scenario-7
 	$(MAKE) scenario-8
+
+.PHONY: setup
+setup:
+	bash ./deploy/resident/install.sh
+
+.PHONY: stage-resident
+stage-resident:
+	bash ./deploy/resident/install.sh --stage-only
+
+.PHONY: prepare-resident
+prepare-resident:
+	bash ./deploy/resident/install.sh --stage-only
+	bash $(RESIDENT_SCRIPTS_DIR)/check-prerequisites.sh
+	$(RESIDENT_SCRIPTS_DIR)/install-tooling.sh
+	$(RESIDENT_SCRIPTS_DIR)/prepare-scheduler-artifacts.sh
+	$(RESIDENT_SCRIPTS_DIR)/prepare-monitoring-artifacts.sh
+
+.PHONY: create-cluster
+create-cluster:
+	$(RESIDENT_SCRIPTS_DIR)/create-canary-cluster.sh
+
+.PHONY: create-nodes
+create-nodes:
+	$(RESIDENT_SCRIPTS_DIR)/install-kwok-canary.sh
+	$(RESIDENT_SCRIPTS_DIR)/verify-base.sh 100
+
+.PHONY: install-schedulers
+install-schedulers:
+	$(RESIDENT_SCRIPTS_DIR)/install-schedulers.sh
+	$(RESIDENT_SCRIPTS_DIR)/verify-schedulers.sh
+	$(RESIDENT_SCRIPTS_DIR)/run-scheduler-smoke-tests.sh
+
+.PHONY: install-monitoring
+install-monitoring:
+	$(RESIDENT_SCRIPTS_DIR)/install-monitoring.sh
+	$(RESIDENT_SCRIPTS_DIR)/verify-monitoring.sh
+
+.PHONY: install-grafana-ingress
+install-grafana-ingress:
+	$(RESIDENT_INGRESS_DIR)/install.sh
+
+.PHONY: scale-nodes
+scale-nodes:
+	$(RESIDENT_SCRIPTS_DIR)/scale-kwok-nodes.sh 1000
+
+.PHONY: verify-resident
+verify-resident:
+	$(RESIDENT_SCRIPTS_DIR)/verify-base.sh 1000
+	$(RESIDENT_SCRIPTS_DIR)/verify-schedulers.sh
+	$(RESIDENT_SCRIPTS_DIR)/verify-monitoring.sh
+	$(RESIDENT_INGRESS_DIR)/verify.sh
 
 .PHONY: scenario-1
 scenario-1:

@@ -10,62 +10,98 @@
 
 ## 常驻 Kind 集群
 
-常驻集群是当前唯一支持的执行模式。框架复用已经部署好的集群，不会在测试过程中创建或删除 Kind 集群。
+这是当前唯一支持的执行模式。首次部署会创建 1 个 Kind 控制面节点和 1000 个 KWOK 节点，并安装三套调度方案与监控组件；测试期间只切换组件和清理资源，不重建集群。通用真实 Kubernetes 集群暂未支持。
 
 ### 前置条件
 
-- 一个与 [集群部署记录](CLUSTER_DEPLOYMENT_RECORD.md) 等价且健康的常驻集群
-- Docker、Make、curl 和 jq
-- 通过 `KUBECONFIG` 获得的 cluster-admin 权限
-- 已配置的 `kubectl` 和常驻集群部署包
-- 足够运行 1000 个 KWOK 节点、三套调度组件和监控栈的主机资源
+- Docker、Kind `v0.32.0`、Helm 3、curl、jq、Make、tar、sha256sum、ss、install
+- 建议参考已验证主机：Ubuntu 24.04、32 逻辑 CPU、62 GiB 内存
 
-当前默认配置如下：
-
-| 配置项 | 默认值 |
-| --- | --- |
-| Kind 集群 | `volcano-benchmark-1348` |
-| Kubernetes | `v1.34.8` |
-| 节点 | 1 个控制面节点 + 1000 个 KWOK 节点 |
-| Kubeconfig | `/root/benchmark-1348-deploy/kubeconfig` |
-| kubectl | `/root/benchmark-1348-deploy/bin/kubectl` |
-| 部署包 | `/root/benchmark-1348-deploy` |
-
-已验证的主要组件版本：
-
-| 组件 | 版本 |
-| --- | --- |
-| Kind | `v0.32.0` |
-| Kubernetes / kubectl | `v1.34.8` |
-| KWOK | `v0.7.0` |
-| Volcano | `v1.15.1` |
-| Kueue | `v0.19.0` |
-| Scheduler Plugins / Coscheduling | Scheduler `v0.34.7`；Controller `v0.34.7-qpsfix` |
-| Apache YuniKorn | `v1.9.0` |
-| kube-prometheus-stack | `88.1.3` |
-
-上表描述版本化部署基线。部署记录的最新状态中，服务器实时 Agent Scheduler 为性能验证临时使用 `masterperf1` 镜像和 4 个 Scheduler Worker；使用前应以 [集群部署记录](CLUSTER_DEPLOYMENT_RECORD.md) 和实时验收结果为准。
-
-如果等价部署使用了其他路径，可覆盖 `KIND_CLUSTER_NAME`、`KUBECONFIG`、`KUBECTL` 或 `RESIDENT_DEPLOY_DIR`。
-
-控制面的 kube-scheduler、kube-controller-manager 以及各调度 Deployment 均使用 CPU request/limit `500m/8`，不设置内存 request/limit；控制面 Kubernetes client QPS/Burst 均为 `1000/1000`。Scheduler Plugins Controller 镜像基于官方 `v0.34.7`，只应用上游 QPS/Burst 修复 `4cd26c48`，没有升级依赖版本。
-
-当前部署记录中的主机基线为 32 个逻辑 CPU、62 GiB 内存。Prometheus 不设置 CPU 或内存 request/limit，完整测试期间 RSS 峰值曾达到约 19.44 GiB，运行前应确认主机仍有足够的可用内存。
-
-### 快速开始
+### 一键安装（全新集群）
 
 ```bash
-# 验证常驻集群，并构建三套测试二进制。
+sudo -i
+cd /path/to/kube-scheduling-perf
+make setup
 make up
-
-# 运行八个场景和三套调度方案。
-make
-
-# 中断后清理测试资源，并恢复固定空闲副本基线。
-make down
 ```
 
-`make up` 只验证现有集群、调度组件和监控栈，并构建测试程序。运行测试前应先执行它；`make` 本身不会自动调用完整的 `make up` 预检。`make down` 会清理基准测试资源，将全部调度组件和 Audit Exporter 收敛为 1 个副本；它不会删除集群、恢复调度器 ConfigMap 或删除已归档的结果。
+`make setup` 会同步部署包、检查宿主、创建 100 节点金丝雀环境、安装并冒烟验证调度器和监控、扩容至 1000 个 KWOK 节点并完成验收；`make up` 验证集群并构建测试二进制。
+
+> 仅用于全新部署；发现同名集群时会拒绝执行，且不会自动删除或回滚。若 Kind 创建中途失败，应先检查并补齐控制面配置，或在确认无数据需保留后由用户显式删除不完整集群。
+
+### 分步安装
+
+以下命令均在仓库根目录、root shell 中执行。
+
+#### 1. 准备部署包
+
+```bash
+make prepare-resident
+```
+
+同步部署包，检查宿主，并准备 kubectl、调度器和监控制品。
+
+#### 2. 创建 Kind 集群
+
+```bash
+make create-cluster
+```
+
+创建控制面并启用 API Server 审计。
+
+#### 3. 创建 KWOK 节点
+
+```bash
+make create-nodes
+```
+
+安装 KWOK，创建并验收 100 个金丝雀节点。
+
+#### 4. 安装调度器
+
+```bash
+make install-schedulers
+```
+
+安装 Kueue/Coscheduling、Volcano 和 YuniKorn，并执行调度冒烟测试。
+
+#### 5. 安装 Audit Exporter 和监控
+
+```bash
+make install-monitoring
+```
+
+安装 Audit Exporter、Prometheus、Grafana 和图片渲染器。
+
+#### 6. 安装 Grafana Ingress
+
+```bash
+make install-grafana-ingress
+```
+
+#### 7. 扩容并验收
+
+```bash
+make scale-nodes
+make verify-resident
+make up
+```
+
+扩容至 1000 个 KWOK 节点，完成集群、调度器、监控和 Ingress 验收，再构建测试二进制。冒烟测试会创建并删除真实资源；扩容只增不减。失败续跑说明见 [部署包文档](deploy/resident/README.md)。Grafana 开启匿名访问，应限制 `31003`、`31004`、`31005` 的外部来源。
+
+### 固定基线
+
+| 项目 | 当前基线 |
+| --- | --- |
+| 集群 | `volcano-benchmark-1348`；Kubernetes `v1.34.8` |
+| 节点 | 1 个控制面节点 + 1000 个 KWOK `v0.7.0` 节点 |
+| 调度方案 | Volcano `v1.15.1`；Kueue `v0.19.0`；Coscheduling `v0.34.7`；YuniKorn `v1.9.0` |
+| 监控 | kube-prometheus-stack `88.1.3` |
+| 部署目录 | `/root/benchmark-1348-deploy` |
+| 访问入口 | Prometheus `31003`；Grafana `31004`；Grafana Ingress `31005` |
+
+安装路径当前固定；测试运行阶段可覆盖 `KIND_CLUSTER_NAME`、`KUBECONFIG`、`KUBECTL` 和 `RESIDENT_DEPLOY_DIR`。完整版本、资源基线与风险见 [集群部署记录](CLUSTER_DEPLOYMENT_RECORD.md)。
 
 ## 运行测试
 
@@ -255,6 +291,7 @@ doc/                        # 评审、分析和历史测试文档
 
 进一步阅读：
 
+- [常驻集群部署包说明](deploy/resident/README.md)
 - [常驻集群方案细节](RESIDENT_CLUSTER_PLAN_DETAIL.md)
 - [集群部署记录](CLUSTER_DEPLOYMENT_RECORD.md)
 - [常驻集群代码评审](doc/RESIDENT_CLUSTER_CODE_REVIEW.md)
@@ -262,12 +299,12 @@ doc/                        # 评审、分析和历史测试文档
 
 ## 适用边界与风险
 
-- 当前流程依赖已经部署好的命名空间、CRD、调度组件、Audit Exporter、Prometheus、Grafana 和验证脚本，不是可移植的通用集群初始化工具。
+- 测试运行流程依赖上述固定基线；`make setup` 只初始化本文约定的 Linux + Kind + KWOK 环境，不是通用现有 Kubernetes 集群安装器。
 - 当前只有一套常驻集群。删除 Kind 集群会同时删除 etcd 和集群状态；不要为了重新运行测试或部署脚本而删除健康集群。
 - 1000 个 KWOK 节点中只有 255 个具有唯一 PodCIDR。该环境适合虚拟调度压测，不适合验证真实容器、Pod 网络或跨 Pod 通信。
 - 控制面使用很长的 Node 监控周期以降低虚拟节点开销，真实节点故障感知会明显变慢；该集群不应作为通用 Kubernetes 集群使用。
 - Prometheus 和 Grafana 使用 `emptyDir`；Pod 删除或重建后历史指标和手工状态会丢失。需要长期留存时应另行导出。
-- 宿主机的 `31003`、`31004`、`31005` 均绑定到 `0.0.0.0`，公网可达性取决于防火墙和云安全组；其中 `31005` 已启用 Grafana 匿名 Viewer。应限制这三个端口的访问来源。
+- 宿主机的 `31003`、`31004`、`31005` 均绑定到 `0.0.0.0`，公网可达性取决于防火墙和云安全组；`31004` 和 `31005` 访问的是启用匿名 Viewer 的 Grafana。应限制这三个端口的访问来源。
 - 当前审计策略只记录性能分析所需的资源和操作，不是完整的安全审计策略。
 
 ## 故障排查

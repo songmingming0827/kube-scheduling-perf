@@ -52,4 +52,5 @@ curl --fail --silent --show-error --max-time 10 --output /dev/null \
   "http://127.0.0.1:${GRAFANA_HOST_PORT}/grafana/d/perf/?theme=light"
 
 printf 'server_loopback_verified=true\n'
-printf 'grafana_ingress_url=http://104.105.137.213:%s/grafana/d/perf/?theme=light\n' "${GRAFANA_HOST_PORT}"
+printf 'grafana_ingress_loopback_url=http://127.0.0.1:%s/grafana/d/perf/?theme=light\n' "${GRAFANA_HOST_PORT}"
+printf 'external_verification_required=true\n'
