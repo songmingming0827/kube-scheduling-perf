@@ -281,6 +281,7 @@ make down
 ### 仓库结构
 
 ```text
+Makefile                    # 环境安装、测试运行、清理和结果归档入口
 deploy/resident/            # 版本化常驻集群部署包
 deploy/grafana-ingress/     # 持久 Grafana Ingress
 hack/                       # 结果采集、Dashboard 和辅助脚本
@@ -291,30 +292,18 @@ doc/                        # 评审、分析和历史测试文档
 
 进一步阅读：
 
+- [完整性测试报告-volcano-batch-scheduler版](perf-analysis-report.md)
+- [完整性测试报告-volcano-agent-scheduler版](perf-analysis-report-agent.md)
 - [常驻集群部署包说明](deploy/resident/README.md)
 - [常驻集群方案细节](RESIDENT_CLUSTER_PLAN_DETAIL.md)
 - [集群部署记录](CLUSTER_DEPLOYMENT_RECORD.md)
-- [常驻集群代码评审](doc/RESIDENT_CLUSTER_CODE_REVIEW.md)
 - [历史完整测试报告](doc/RESIDENT_CLUSTER_FULL_TEST_REPORT.md)
 
 ### 适用边界与风险
 
 - 测试运行流程依赖上述固定基线；`make setup` 只初始化本文约定的 Linux + Kind + KWOK 环境，不是通用现有 Kubernetes 集群安装器。
-- 当前只有一套常驻集群。删除 Kind 集群会同时删除 etcd 和集群状态；不要为了重新运行测试或部署脚本而删除健康集群。
 - 1000 个 KWOK 节点中只有 255 个具有唯一 PodCIDR。该环境适合虚拟调度压测，不适合验证真实容器、Pod 网络或跨 Pod 通信。
 - 控制面使用很长的 Node 监控周期以降低虚拟节点开销，真实节点故障感知会明显变慢；该集群不应作为通用 Kubernetes 集群使用。
 - Prometheus 和 Grafana 使用 `emptyDir`；Pod 删除或重建后历史指标和手工状态会丢失。需要长期留存时应另行导出。
 - 宿主机的 `31003`、`31004`、`31005` 均绑定到 `0.0.0.0`，公网可达性取决于防火墙和云安全组；`31004` 和 `31005` 访问的是启用匿名 Viewer 的 Grafana。应限制这三个端口的访问来源。
 - 当前审计策略只记录性能分析所需的资源和操作，不是完整的安全审计策略。
-
-### 故障排查
-
-#### Too Many Open Files
-
-Linux 主机出现 `Too many open files` 时，可提高 inotify 限制：
-
-```bash
-echo fs.inotify.max_user_watches=655360 | sudo tee -a /etc/sysctl.conf
-echo fs.inotify.max_user_instances=1280 | sudo tee -a /etc/sysctl.conf
-sudo sysctl -p
-```
